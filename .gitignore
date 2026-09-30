@@ -1,0 +1,21 @@
+*.o
+*.out
+*.exe
+
+####
+#nazev executable souboru
+ifj2026
+####
+
+.DS_Store
+__MACOSX/
+Thumbs.db
+
+*~
+*.swp
+*.tmp
+
+.idea/
+.vscode/
+
+*.log
