@@ -57,6 +57,13 @@ int str_append(str_t *str, char c) {
 }
 
 char *str_take(str_t *str) {
+  if (str->data == NULL) { // nothing append since last take
+    char *empty = malloc(1);
+    if (empty != NULL) {
+      empty[0] = '\0';
+    }
+    return empty; // NULL only if malloc failed
+  }
   char *result = str->data;
   str->data = NULL;
   str->length = 0;

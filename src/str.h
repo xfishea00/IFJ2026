@@ -30,6 +30,7 @@ void str_clear(str_t *str);
 int str_append(str_t *str, char c);
 
 // returns the content and leaves the string empty (caller must free it)
+// returns NULL on allocation error
 char *str_take(str_t *str);
 
 #endif // STR_H
