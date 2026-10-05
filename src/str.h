@@ -29,8 +29,7 @@ void str_clear(str_t *str);
 // returns 0 on success, 99 on allocation error
 int str_append(str_t *str, char c);
 
-// returns the contentand leaves the string empty (caller must free it)
-// returns NULL on allocation error
+// returns the content and leaves the string empty (caller must free it)
 char *str_take(str_t *str);
 
 #endif // STR_H
