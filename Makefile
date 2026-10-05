@@ -17,7 +17,7 @@ SRCS = $(wildcard src/*.c)
 OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)
 # Only files that actually exist (a bare *.c glob breaks when there are none)
-FMT_SRCS = $(wildcard src/*.c src/*.h)
+FMT_SRCS = $(wildcard src/*.c src/*.h tests/*.c tests/*.h)
 
 .PHONY: all build check format build-check valgrind asan clean
 
