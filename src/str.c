@@ -5,6 +5,7 @@
  */
 
 #include "str.h"
+#include "error.h"
 
 #include <stdlib.h>
 
@@ -13,12 +14,12 @@
 int str_init(str_t *str) {
   str->data = malloc(STR_INIT_CAPACITY);
   if (str->data == NULL) {
-    return 99; // allocation error
+    return ERR_INTERNAL;
   }
   str->data[0] = '\0';
   str->length = 0;
   str->capacity = STR_INIT_CAPACITY;
-  return 0; // success
+  return ERR_OK;
 }
 
 void str_free(str_t *str) {
@@ -45,7 +46,7 @@ int str_append(str_t *str, char c) {
     }
     char *new_data = realloc(str->data, new_capacity);
     if (new_data == NULL) {
-      return 99; // allocation error
+      return ERR_INTERNAL;
     }
     str->data = new_data;
     str->capacity = new_capacity;
@@ -53,7 +54,7 @@ int str_append(str_t *str, char c) {
   str->data[str->length] = c;
   str->length++;
   str->data[str->length] = '\0';
-  return 0; // success
+  return ERR_OK;
 }
 
 char *str_take(str_t *str) {

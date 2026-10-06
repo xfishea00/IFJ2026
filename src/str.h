@@ -11,12 +11,12 @@
 
 // dynamic string that grows as characters are added
 typedef struct {
-  char *data;      // content, always ends with '\0'
+  char *data;      // NULL after str_take, otherwise ends with '\0'
   size_t length;   // number of characters without '\0'
   size_t capacity; // allocated size of data in bytes
 } str_t;
 
-// allocate an empty string; returns 0 on success, 99 on allocation error
+// allocate an empty string; returns ERR_OK or ERR_INTERNAL
 int str_init(str_t *str);
 
 // frees the string memory
@@ -26,7 +26,7 @@ void str_free(str_t *str);
 void str_clear(str_t *str);
 
 // adds one character to the end, grows the buffer if needed
-// returns 0 on success, 99 on allocation error
+// returns ERR_OK or ERR_INTERNAL
 int str_append(str_t *str, char c);
 
 // returns the content and leaves the string empty (caller must free it)
