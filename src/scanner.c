@@ -129,8 +129,68 @@ int scanner_next(token_t *out) {
         return ERR_LEXICAL; // invalid character
       }
       break;
-    default:
-      return ERR_INTERNAL; // unknown state
+    case STATE_LT:
+      if (c == '=') {
+        out->type = TOK_LE;
+        return ERR_OK;
+      } else {
+        unget_char(c);
+        out->type = TOK_LT;
+        return ERR_OK;
+      }
+    case STATE_GT:
+      if (c == '=') {
+        out->type = TOK_GE;
+        return ERR_OK;
+      } else {
+        unget_char(c);
+        out->type = TOK_GT;
+        return ERR_OK;
+      }
+    case STATE_ASSIGN:
+      if (c == '=') {
+        out->type = TOK_EQ;
+        return ERR_OK;
+      } else {
+        unget_char(c);
+        out->type = TOK_ASSIGN;
+        return ERR_OK;
+      }
+    case STATE_EXCL:
+      if (c == '=') {
+        out->type = TOK_NEQ;
+        return ERR_OK;
+      } else {
+        return ERR_LEXICAL; // ! alone is not a valid token
+      }
+    case STATE_AT:
+      if (c == 'm') {
+        state = STATE_AT_M;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+    case STATE_AT_M:
+      if (c == 'a') {
+        state = STATE_AT_MA;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+    case STATE_AT_MA:
+      if (c == 'i') {
+        state = STATE_AT_MAI;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+    case STATE_AT_MAI:
+      if (c == 'n') {
+        out->type = TOK_AT_MAIN;
+        return ERR_OK;
+      } else {
+        return ERR_LEXICAL;
+      }
     }
   }
 }
