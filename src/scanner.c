@@ -125,8 +125,9 @@ int scanner_next(token_t *out) {
         state = STATE_EXCL;
       } else if (c == '@') {
         state = STATE_AT;
-      } else
+      } else {
         return ERR_LEXICAL; // invalid character
+      }
       break;
     default:
       return ERR_INTERNAL; // unknown state
