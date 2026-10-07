@@ -72,11 +72,12 @@ int scanner_next(token_t *out) {
   state_t state = STATE_START;
 
   while (1) {
+    int c_line = line; // line of the char we are about to read
     int c = get_char();
 
     switch (state) {
     case STATE_START:
-      out->line = line;
+      out->line = c_line;
       if (c == ' ' || c == '\t') {
         // whitespace, stay in STATE_START
       } else if (c == '\n') {
