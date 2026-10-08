@@ -56,17 +56,23 @@ void scanner_free(void) { str_free(&lexeme); }
 
 // states of finite automaton
 typedef enum {
-  STATE_START,      // S
-  STATE_LT,         // f1 after '<'
-  STATE_GT,         // f3 after '>'
-  STATE_ASSIGN,     // f5 after '='
-  STATE_EXCL,       // q1 after '!'
-  STATE_AT,         // q2 after '@'
-  STATE_AT_M,       // q3 after "@m"
-  STATE_AT_MA,      // q4 after "@ma"
-  STATE_AT_MAI,     // q5 after "@mai"
-  STATE_UNDERSCORE, // q6 after "_"
-  STATE_ID,         // f19 identifier
+  STATE_START,              // S
+  STATE_LT,                 // f1 after '<'
+  STATE_GT,                 // f3 after '>'
+  STATE_ASSIGN,             // f5 after '='
+  STATE_EXCL,               // q1 after '!'
+  STATE_AT,                 // q2 after '@'
+  STATE_AT_M,               // q3 after "@m"
+  STATE_AT_MA,              // q4 after "@ma"
+  STATE_AT_MAI,             // q5 after "@mai"
+  STATE_UNDERSCORE,         // q6 after "_"
+  STATE_ID,                 // f19 identifier
+  STATE_ZERO,               // f20 after '0'
+  STATE_INT,                // f23 integer literal
+  STATE_INT_UNDERSCORE,     // q9 after '_' in integer part
+  STATE_INT_DOT,            // q7 after '.' in number
+  STATE_DECIMAL,            // f21 decimal part
+  STATE_DECIMAL_UNDERSCORE, // q10 after '_' in decimal part
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -107,6 +113,18 @@ static token_type_t keyword_type(const char *text) {
     }
   }
   return TOK_ID; // not a keyword
+}
+
+// sets the type of number token and converts lexeme to value
+static int finish_number(token_t *out, token_type_t type) {
+  out->type = type;
+  if (type == TOK_INT_LIT) {
+    out->int_val = strtoll(lexeme.data, NULL, 10);
+  } else {
+    out->double_val = strtod(lexeme.data, NULL);
+    // TODO: overflow check
+  }
+  return ERR_OK;
 }
 
 int scanner_next(token_t *out) {
@@ -179,6 +197,16 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
         state = STATE_UNDERSCORE;
+      } else if (c == '0') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_ZERO;
+      } else if (isdigit(c)) { // c is 1-9
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_INT;
       } else {
         return ERR_LEXICAL; // invalid character
       }
@@ -281,6 +309,89 @@ int scanner_next(token_t *out) {
           }
         }
         return ERR_OK;
+      }
+      break;
+
+    case STATE_ZERO:
+      if (c == '.') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_INT_DOT;
+      } else {
+        // TODO: 'e'/'E', 'd'/'D'
+        unget_char(c);
+        return finish_number(out, TOK_INT_LIT);
+      }
+      break;
+
+    case STATE_INT:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+      } else if (c == '_') {
+        state = STATE_INT_UNDERSCORE;
+      } else if (c == '.') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_INT_DOT;
+      } else {
+        // TODO: 'e'/'E', 'd'/'D'
+        unget_char(c);
+        return finish_number(out, TOK_INT_LIT);
+      }
+      break;
+
+    case STATE_INT_UNDERSCORE:
+      if (c == '_') {
+        state = STATE_INT_UNDERSCORE; // stay in this state
+      } else if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_INT;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_INT_DOT:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_DECIMAL;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_DECIMAL:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+      } else if (c == '_') {
+        state = STATE_DECIMAL_UNDERSCORE;
+      } else {
+        // TODO: 'e'/'E', 'd'/'D'
+        unget_char(c);
+        return finish_number(out, TOK_DOUBLE_LIT);
+      }
+      break;
+
+    case STATE_DECIMAL_UNDERSCORE:
+      if (c == '_') {
+        state = STATE_DECIMAL_UNDERSCORE;
+      } else if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_DECIMAL;
+      } else {
+        return ERR_LEXICAL;
       }
       break;
     }
