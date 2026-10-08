@@ -37,7 +37,7 @@ static int get_char(void) {
 // returns a character back, next get_char will return it again
 static void unget_char(int c) {
   if (c == EOF || pushback_count >= PUSHBACK_SIZE) {
-    return; // do not push back
+    return; // nothing to push back
   }
   pushback[pushback_count++] = c;
   if (c == '\n') {
@@ -65,7 +65,7 @@ typedef enum {
   STATE_AT_M,               // q3 after "@m"
   STATE_AT_MA,              // q4 after "@ma"
   STATE_AT_MAI,             // q5 after "@mai"
-  STATE_UNDERSCORE,         // q6 after "_"
+  STATE_UNDERSCORE,         // q6 after '_'
   STATE_ID,                 // f19 identifier
   STATE_ZERO,               // f20 after '0'
   STATE_INT,                // f23 integer literal
@@ -73,6 +73,10 @@ typedef enum {
   STATE_INT_DOT,            // q7 after '.' in number
   STATE_DECIMAL,            // f21 decimal part
   STATE_DECIMAL_UNDERSCORE, // q10 after '_' in decimal part
+  STATE_EXP,                // q8 after 'e'/'E'
+  STATE_EXP_SIGN,           // q12 after sign of exponent
+  STATE_EXP_DIGITS,         // f22 digits of exponent
+  STATE_EXP_UNDERSCORE,     // q11 after '_' in exponent
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -318,8 +322,14 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
         state = STATE_INT_DOT;
+      } else if (c == 'e' || c == 'E') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP;
+      } else if (c == 'd' || c == 'D') {
+        return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
       } else {
-        // TODO: 'e'/'E', 'd'/'D'
         unget_char(c);
         return finish_number(out, TOK_INT_LIT);
       }
@@ -331,14 +341,20 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
       } else if (c == '_') {
-        state = STATE_INT_UNDERSCORE;
+        state = STATE_INT_UNDERSCORE; // '_' is not stored
       } else if (c == '.') {
         if (str_append(&lexeme, (char)c) != ERR_OK) {
           return ERR_INTERNAL;
         }
         state = STATE_INT_DOT;
+      } else if (c == 'e' || c == 'E') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP;
+      } else if (c == 'd' || c == 'D') {
+        return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
       } else {
-        // TODO: 'e'/'E', 'd'/'D'
         unget_char(c);
         return finish_number(out, TOK_INT_LIT);
       }
@@ -374,9 +390,15 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
       } else if (c == '_') {
-        state = STATE_DECIMAL_UNDERSCORE;
+        state = STATE_DECIMAL_UNDERSCORE; // '_' is not stored
+      } else if (c == 'e' || c == 'E') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP;
+      } else if (c == 'd' || c == 'D') {
+        return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
       } else {
-        // TODO: 'e'/'E', 'd'/'D'
         unget_char(c);
         return finish_number(out, TOK_DOUBLE_LIT);
       }
@@ -390,6 +412,61 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
         state = STATE_DECIMAL;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_EXP:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP_DIGITS;
+      } else if (c == '+' || c == '-') {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP_SIGN;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_EXP_SIGN:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP_DIGITS;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_EXP_DIGITS:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+      } else if (c == '_') {
+        state = STATE_EXP_UNDERSCORE; // '_' is not stored
+      } else if (c == 'd' || c == 'D') {
+        return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
+      } else {
+        unget_char(c);
+        return finish_number(out, TOK_DOUBLE_LIT);
+      }
+      break;
+
+    case STATE_EXP_UNDERSCORE:
+      if (c == '_') {
+        state = STATE_EXP_UNDERSCORE;
+      } else if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_EXP_DIGITS;
       } else {
         return ERR_LEXICAL;
       }
