@@ -19,7 +19,9 @@ DEPS = $(SRCS:.c=.d)
 # Only files that actually exist (a bare *.c glob breaks when there are none)
 FMT_SRCS = $(wildcard src/*.c src/*.h)
 
-.PHONY: all build check format build-check valgrind asan clean
+TEST_DIR = tests
+
+.PHONY: all build check format build-check valgrind asan clean test test-symtable
 
 # Default target -- the only one run during evaluation
 all: build
@@ -54,4 +56,10 @@ asan:
 	$(CC) $(CFLAGS) -fsanitize=address,undefined $(SRCS) -o $(TARGET)-asan
 
 clean:
-	rm -f $(TARGET) $(TARGET)-asan $(OBJS) $(DEPS)
+	rm -rf $(TARGET) $(TARGET)-asan $(OBJS) $(DEPS) tests/test_symtable *.dSYM tests/*.dSYM
+
+test: test-symtable
+
+test-symtable:
+	$(CC) $(CFLAGS) tests/test_symtable.c src/symtable.c -o $(TEST_DIR)/test_symtable
+	./$(TEST_DIR)/test_symtable
