@@ -9,6 +9,8 @@
 #include "str.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -77,6 +79,7 @@ typedef enum {
   STATE_EXP_SIGN,           // q12 after sign of exponent
   STATE_EXP_DIGITS,         // f22 digits of exponent
   STATE_EXP_UNDERSCORE,     // q11 after '_' in exponent
+  STATE_DOT,                // f13 after '.' at start of token
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -119,14 +122,28 @@ static token_type_t keyword_type(const char *text) {
   return TOK_ID; // not a keyword
 }
 
+// returns true if next char can be part of an identifier (letter, digit, '_')
+static bool next_is_id_char(void) {
+  int next = get_char();
+  unget_char(next);
+  return isalnum(next) || next == '_';
+}
+
 // sets the type of number token and converts lexeme to value
 static int finish_number(token_t *out, token_type_t type) {
+  if (next_is_id_char()) {
+    return ERR_LEXICAL;
+  }
   out->type = type;
   if (type == TOK_INT_LIT) {
     out->int_val = strtoll(lexeme.data, NULL, 10);
   } else {
-    out->double_val = strtod(lexeme.data, NULL);
-    // TODO: overflow check
+    errno = 0;
+    double value = strtod(lexeme.data, NULL);
+    if ((errno == ERANGE) && (value == HUGE_VAL || value == -HUGE_VAL)) {
+      return ERR_LEXICAL; // too large or too small for double
+    }
+    out->double_val = value;
   }
   return ERR_OK;
 }
@@ -170,8 +187,10 @@ int scanner_next(token_t *out) {
         out->type = TOK_COMMA;
         return ERR_OK;
       } else if (c == '.') {
-        out->type = TOK_DOT;
-        return ERR_OK;
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_DOT;
       } else if (c == ';') {
         out->type = TOK_SEMICOLON;
         return ERR_OK;
@@ -280,6 +299,9 @@ int scanner_next(token_t *out) {
 
     case STATE_AT_MAI:
       if (c == 'n') {
+        if (next_is_id_char()) {
+          return ERR_LEXICAL;
+        }
         out->type = TOK_AT_MAIN;
         return ERR_OK;
       } else {
@@ -469,6 +491,19 @@ int scanner_next(token_t *out) {
         state = STATE_EXP_DIGITS;
       } else {
         return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_DOT:
+      if (isdigit(c)) {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_DECIMAL;
+      } else {
+        unget_char(c);
+        out->type = TOK_DOT;
+        return ERR_OK;
       }
       break;
     }
