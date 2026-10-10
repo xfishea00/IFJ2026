@@ -2,6 +2,7 @@
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    scanner.h
  * Authors: Michal Řezníček (xreznim00)
+ * Brief:   interface of the lexical analyzer
  */
 
 #ifndef SCANNER_H

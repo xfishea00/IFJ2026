@@ -2,6 +2,7 @@
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    str.h
  * Authors: Michal Řezníček (xreznim00)
+ * Brief:   interface of the dynamic string
  */
 
 #ifndef STR_H

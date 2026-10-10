@@ -2,6 +2,7 @@
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    error.h
  * Authors: Michal Řezníček (xreznim00)
+ * Brief:   exit codes of the compiler
  */
 
 #ifndef ERROR_H

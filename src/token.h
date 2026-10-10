@@ -1,7 +1,8 @@
-/**
+/*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    token.h
  * Authors: Michal Řezníček (xreznim00)
+ * Brief:   token types and token structure
  */
 
 #ifndef TOKEN_H

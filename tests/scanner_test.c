@@ -2,6 +2,7 @@
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    scanner_test.c
  * Authors: Michal Řezníček (xreznim00)
+ * Brief:   tests of the scanner
  *
  * AI-generated test (Claude Opus 5.5). Prompt: "napis test pro scanner, over
  * operatory, @main, identifikatory a klicova slova, cisla, retezce, komentare
