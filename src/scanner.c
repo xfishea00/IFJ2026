@@ -80,6 +80,13 @@ typedef enum {
   STATE_EXP_DIGITS,         // f22 digits of exponent
   STATE_EXP_UNDERSCORE,     // q11 after '_' in exponent
   STATE_DOT,                // f13 after '.' at start of token
+  STATE_STR_START,          // q13 after the opening '"'
+  STATE_STR,                // q14 inside single line string
+  STATE_STR_ESC,            // q15 after '\' in string
+  STATE_STR_EMPTY,          // f26 after '""', empty string or start of '"""'
+  STATE_ML,                 // q16 inside multi line string
+  STATE_ML_Q1,              // q17 one '"' in multi line string
+  STATE_ML_Q2,              // q18 two '"' in multi line string
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -140,7 +147,7 @@ static int finish_number(token_t *out, token_type_t type) {
   } else {
     errno = 0;
     double value = strtod(lexeme.data, NULL);
-    if ((errno == ERANGE) && (value == HUGE_VAL || value == -HUGE_VAL)) {
+    if (errno == ERANGE && (value == HUGE_VAL || value == -HUGE_VAL)) {
       return ERR_LEXICAL; // too large or too small for double
     }
     out->double_val = value;
@@ -230,6 +237,8 @@ int scanner_next(token_t *out) {
           return ERR_INTERNAL;
         }
         state = STATE_INT;
+      } else if (c == '"') {
+        state = STATE_STR_START;
       } else {
         return ERR_LEXICAL; // invalid character
       }
@@ -384,7 +393,7 @@ int scanner_next(token_t *out) {
 
     case STATE_INT_UNDERSCORE:
       if (c == '_') {
-        state = STATE_INT_UNDERSCORE; // stay in this state
+        state = STATE_INT_UNDERSCORE;
       } else if (isdigit(c)) {
         if (str_append(&lexeme, (char)c) != ERR_OK) {
           return ERR_INTERNAL;
@@ -504,6 +513,133 @@ int scanner_next(token_t *out) {
         unget_char(c);
         out->type = TOK_DOT;
         return ERR_OK;
+      }
+      break;
+
+    case STATE_STR_START:
+      if (c == '"') {
+        state = STATE_STR_EMPTY;
+      } else if (c == '\\') {
+        state = STATE_STR_ESC;
+      } else if (c == '\n' || c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      }
+      break;
+
+    case STATE_STR:
+      if (c == '"') {
+        out->type = TOK_STRING_LIT;
+        out->string_val = str_take(&lexeme);
+        if (out->string_val == NULL) {
+          return ERR_INTERNAL;
+        }
+        return ERR_OK;
+      } else if (c == '\\') {
+        state = STATE_STR_ESC;
+      } else if (c == '\n' || c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+      }
+      break;
+
+    case STATE_STR_ESC:
+      if (c == 'n') {
+        if (str_append(&lexeme, '\n') != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      } else if (c == 't') {
+        if (str_append(&lexeme, '\t') != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      } else if (c == 'r') {
+        if (str_append(&lexeme, '\r') != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      } else if (c == '"') {
+        if (str_append(&lexeme, '"') != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      } else if (c == '\\') {
+        if (str_append(&lexeme, '\\') != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_STR;
+      } else {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_STR_EMPTY:
+      if (c == '"') {
+        state = STATE_ML;
+      } else {
+        unget_char(c);
+        out->type = TOK_STRING_LIT;
+        out->string_val = str_take(&lexeme);
+        if (out->string_val == NULL) {
+          return ERR_INTERNAL;
+        }
+        return ERR_OK;
+      }
+      break;
+
+    case STATE_ML:
+      if (c == '"') {
+        state = STATE_ML_Q1;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        if (str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+      }
+      break;
+
+    case STATE_ML_Q1:
+      if (c == '"') {
+        state = STATE_ML_Q2;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        // the '"' was part of the content
+        if (str_append(&lexeme, '"') != ERR_OK ||
+            str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_ML;
+      }
+      break;
+
+    case STATE_ML_Q2:
+      if (c == '"') {
+        out->type = TOK_STRING_LIT;
+        out->string_val = str_take(&lexeme);
+        if (out->string_val == NULL) {
+          return ERR_INTERNAL;
+        }
+        return ERR_OK;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        // both '"' were part of the content
+        if (str_append(&lexeme, '"') != ERR_OK ||
+            str_append(&lexeme, '"') != ERR_OK ||
+            str_append(&lexeme, (char)c) != ERR_OK) {
+          return ERR_INTERNAL;
+        }
+        state = STATE_ML;
       }
       break;
     }
