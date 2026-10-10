@@ -15,14 +15,24 @@
 #include <string.h>
 
 #define PUSHBACK_SIZE 4 // how many characters can be returned to the input
+#define INDENT_INIT_CAPACITY 16 // initial size of indent_stack
 
 static FILE *input;                 // where to read the input from
 static int line;                    // current line, starts at 1
 static str_t lexeme;                // text of the token being read
 static int pushback[PUSHBACK_SIZE]; // characters returned by unget_char
 static int pushback_count;          // how many characters are in pushback
+// indentation layer
+static int *indent_stack;   // indentation levels, indent_stack[0] == 0
+static int indent_count;    // number of levels on the stack
+static int indent_capacity; // allocated size of indent_stack
+static bool at_line_start;  // next char is the first char of a line
+static int paren_depth;     // number of unclosed '('
+static int pending_dedents; // DEDENT still to be returned
+static token_t held_token;  // token returned after INDENT/DEDENT
+static bool has_held;       // held_token contains a token
 
-// macro for appending a character to the lexeme
+// appends c to lexeme, on error returns ERR_INTERNAL
 #define APPEND(c)                                                              \
   do {                                                                         \
     if (str_append(&lexeme, c) != ERR_OK) {                                    \
@@ -59,10 +69,29 @@ int scanner_init(FILE *in) {
   input = in;
   line = 1;
   pushback_count = 0;
+  indent_stack = malloc(INDENT_INIT_CAPACITY * sizeof(int));
+  if (indent_stack == NULL) {
+    return ERR_INTERNAL;
+  }
+  indent_capacity = INDENT_INIT_CAPACITY;
+  indent_stack[0] = 0;
+  indent_count = 1;
+  at_line_start = true;
+  paren_depth = 0;
+  pending_dedents = 0;
+  has_held = false;
   return str_init(&lexeme);
 }
 
-void scanner_free(void) { str_free(&lexeme); }
+void scanner_free(void) {
+  str_free(&lexeme);
+  free(indent_stack);
+  indent_stack = NULL;
+  if (has_held) {
+    token_free(&held_token);
+  }
+  has_held = false;
+}
 
 // states of finite automaton
 typedef enum {
@@ -168,12 +197,81 @@ static int finish_number(token_t *out, token_type_t type) {
   return ERR_OK;
 }
 
-int scanner_next(token_t *out) {
+// pushes new indentation level
+static int indent_push(int indent) {
+  if (indent_count == indent_capacity) {
+    int new_capacity = indent_capacity * 2;
+    int *tmp = realloc(indent_stack, new_capacity * sizeof(int));
+    if (tmp == NULL) {
+      return ERR_INTERNAL;
+    }
+    indent_stack = tmp;
+    indent_capacity = new_capacity;
+  }
+  indent_stack[indent_count++] = indent;
+  return ERR_OK;
+}
+
+// reads spaces at start of line, sets count and tab
+static void read_indent(int *count, bool *tab) {
+  while (1) {
+    int c = get_char();
+    if (c == ' ') {
+      (*count)++;
+    } else if (c == '\t') {
+      *tab = true;
+    } else {
+      unget_char(c);
+      return;
+    }
+  }
+}
+
+// adds INDENT or DEDENT before the first token of line
+static int handle_indent(token_t *out, int indent) {
+  int top = indent_stack[indent_count - 1];
+  if (indent == top) {
+    return ERR_OK;
+  }
+
+  if (indent > top) {
+    if (indent_push(indent) != ERR_OK) {
+      token_free(out);
+      return ERR_INTERNAL;
+    }
+    held_token = *out; // token waits until INDENT is returned
+    has_held = true;
+    *out = (token_t){0}; // all fields zero
+    out->type = TOK_INDENT;
+    out->line = held_token.line;
+    return ERR_OK;
+  }
+
+  int dedents = 0;
+  while (indent_stack[indent_count - 1] > indent) {
+    indent_count--;
+    dedents++;
+  }
+  if (indent_stack[indent_count - 1] != indent) {
+    token_free(out);
+    return ERR_LEXICAL; // no block with this indentation
+  }
+  held_token = *out; // token waits until DEDENTs are returned
+  has_held = true;
+  pending_dedents = dedents - 1;
+  *out = (token_t){0}; // all fields zero
+  out->type = TOK_DEDENT;
+  out->line = held_token.line;
+  return ERR_OK;
+}
+
+// reads one token by the finite automaton
+static int scan_raw(token_t *out) {
   *out = (token_t){0}; // empty token
   str_clear(&lexeme);
   state_t state = STATE_START;
-  int depth = 0;   // nesting of block comments
-  bool nl = false; // block comment with '\n'
+  int comment_depth = 0; // nesting of block comments
+  bool nl = false;       // block comment with '\n'
 
   while (1) {
     int c_line = line; // line of the char we are about to read
@@ -595,7 +693,7 @@ int scanner_next(token_t *out) {
       if (c == '/') {
         state = STATE_LINE_COMMENT;
       } else if (c == '*') {
-        depth = 0;
+        comment_depth = 0;
         nl = false;
         state = STATE_BLOCK;
       } else {
@@ -626,7 +724,7 @@ int scanner_next(token_t *out) {
 
     case STATE_BLOCK_SLASH:
       if (c == '*') {
-        depth++;
+        comment_depth++;
         state = STATE_BLOCK;
       } else if (c == '\n') {
         nl = true;
@@ -642,8 +740,8 @@ int scanner_next(token_t *out) {
 
     case STATE_BLOCK_STAR:
       if (c == '/') {
-        if (depth > 0) {
-          depth--; // end of nested comment
+        if (comment_depth > 0) {
+          comment_depth--; // end of nested comment
           state = STATE_BLOCK;
         } else if (nl) {
           out->type = TOK_NEWLINE; // comment with '\n' acts as end of line
@@ -663,5 +761,74 @@ int scanner_next(token_t *out) {
       }
       break;
     }
+  }
+}
+
+// indentation layer over scan_raw: adds INDENT/DEDENT, skips empty lines
+int scanner_next(token_t *out) {
+  // waiting DEDENT first
+  if (pending_dedents > 0) {
+    pending_dedents--;
+    *out = (token_t){0}; // all fields zero
+    out->type = TOK_DEDENT;
+    out->line = held_token.line;
+    return ERR_OK;
+  }
+
+  // token waiting after INDENT/DEDENT
+  if (has_held) {
+    *out = held_token;
+    has_held = false;
+    return ERR_OK;
+  }
+
+  while (1) {
+    int indent = 0;
+    bool tab = false;
+    bool line_start = at_line_start;
+    if (line_start) {
+      read_indent(&indent, &tab);
+    }
+
+    int rc = scan_raw(out);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+
+    if (out->type == TOK_NEWLINE) {
+      if (line_start || paren_depth > 0) {
+        continue; // empty line or '\n' inside parens
+      } else {
+        at_line_start = true;
+        return ERR_OK;
+      }
+    }
+
+    // last line without '\n' still ends with NEWLINE
+    if (out->type == TOK_EOF && !line_start) {
+      at_line_start = true;
+      out->type = TOK_NEWLINE;
+      return ERR_OK;
+    }
+
+    if (out->type == TOK_LPAR) {
+      paren_depth++;
+    } else if (out->type == TOK_RPAR && paren_depth > 0) {
+      paren_depth--;
+    }
+
+    if (!line_start) {
+      return ERR_OK; // token in the middle of a line
+    }
+    if (out->type == TOK_EOF) {
+      indent = 0; // EOF closes all blocks
+    } else {
+      at_line_start = false;
+      if (tab) {
+        token_free(out);
+        return ERR_LEXICAL; // tab in indentation of non-empty line
+      }
+    }
+    return handle_indent(out, indent);
   }
 }
