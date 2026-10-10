@@ -22,6 +22,14 @@ static str_t lexeme;                // text of the token being read
 static int pushback[PUSHBACK_SIZE]; // characters returned by unget_char
 static int pushback_count;          // how many characters are in pushback
 
+// macro for appending a character to the lexeme
+#define APPEND(c)                                                              \
+  do {                                                                         \
+    if (str_append(&lexeme, c) != ERR_OK) {                                    \
+      return ERR_INTERNAL;                                                     \
+    }                                                                          \
+  } while (0)
+
 // returns the next character of the input or EOF
 static int get_char(void) {
   int c;
@@ -87,6 +95,11 @@ typedef enum {
   STATE_ML,                 // q16 inside multi line string
   STATE_ML_Q1,              // q17 one '"' in multi line string
   STATE_ML_Q2,              // q18 two '"' in multi line string
+  STATE_DIV,                // f10 after '/'
+  STATE_LINE_COMMENT,       // q19 inside "//" comment
+  STATE_BLOCK,              // q20 inside block comment
+  STATE_BLOCK_SLASH,        // q21 '/' inside block comment
+  STATE_BLOCK_STAR,         // q22 '*' inside block comment
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -148,7 +161,7 @@ static int finish_number(token_t *out, token_type_t type) {
     errno = 0;
     double value = strtod(lexeme.data, NULL);
     if (errno == ERANGE && (value == HUGE_VAL || value == -HUGE_VAL)) {
-      return ERR_LEXICAL; // too large or too small for double
+      return ERR_LEXICAL; // too large for double
     }
     out->double_val = value;
   }
@@ -159,6 +172,8 @@ int scanner_next(token_t *out) {
   *out = (token_t){0}; // empty token
   str_clear(&lexeme);
   state_t state = STATE_START;
+  int depth = 0;   // nesting of block comments
+  bool nl = false; // block comment with '\n'
 
   while (1) {
     int c_line = line; // line of the char we are about to read
@@ -185,8 +200,7 @@ int scanner_next(token_t *out) {
         out->type = TOK_MUL;
         return ERR_OK;
       } else if (c == '/') {
-        out->type = TOK_DIV;
-        return ERR_OK;
+        state = STATE_DIV;
       } else if (c == ':') {
         out->type = TOK_COLON;
         return ERR_OK;
@@ -194,9 +208,7 @@ int scanner_next(token_t *out) {
         out->type = TOK_COMMA;
         return ERR_OK;
       } else if (c == '.') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_DOT;
       } else if (c == ';') {
         out->type = TOK_SEMICOLON;
@@ -218,24 +230,16 @@ int scanner_next(token_t *out) {
       } else if (c == '@') {
         state = STATE_AT;
       } else if (isalpha(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_ID;
       } else if (c == '_') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_UNDERSCORE;
       } else if (c == '0') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_ZERO;
       } else if (isdigit(c)) { // c is 1-9
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_INT;
       } else if (c == '"') {
         state = STATE_STR_START;
@@ -319,9 +323,7 @@ int scanner_next(token_t *out) {
 
     case STATE_UNDERSCORE:
       if (isalnum(c) || c == '_') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_ID;
       } else {
         return ERR_LEXICAL; // '_' alone is not a valid token
@@ -330,9 +332,7 @@ int scanner_next(token_t *out) {
 
     case STATE_ID:
       if (isalnum(c) || c == '_') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       } else {
         // end of identifier
         unget_char(c);
@@ -349,14 +349,10 @@ int scanner_next(token_t *out) {
 
     case STATE_ZERO:
       if (c == '.') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_INT_DOT;
       } else if (c == 'e' || c == 'E') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP;
       } else if (c == 'd' || c == 'D') {
         return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
@@ -368,20 +364,14 @@ int scanner_next(token_t *out) {
 
     case STATE_INT:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       } else if (c == '_') {
         state = STATE_INT_UNDERSCORE; // '_' is not stored
       } else if (c == '.') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_INT_DOT;
       } else if (c == 'e' || c == 'E') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP;
       } else if (c == 'd' || c == 'D') {
         return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
@@ -395,9 +385,7 @@ int scanner_next(token_t *out) {
       if (c == '_') {
         state = STATE_INT_UNDERSCORE;
       } else if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_INT;
       } else {
         return ERR_LEXICAL;
@@ -406,9 +394,7 @@ int scanner_next(token_t *out) {
 
     case STATE_INT_DOT:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_DECIMAL;
       } else {
         return ERR_LEXICAL;
@@ -417,15 +403,11 @@ int scanner_next(token_t *out) {
 
     case STATE_DECIMAL:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       } else if (c == '_') {
         state = STATE_DECIMAL_UNDERSCORE; // '_' is not stored
       } else if (c == 'e' || c == 'E') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP;
       } else if (c == 'd' || c == 'D') {
         return finish_number(out, TOK_DOUBLE_LIT); // 'd' is not stored
@@ -439,9 +421,7 @@ int scanner_next(token_t *out) {
       if (c == '_') {
         state = STATE_DECIMAL_UNDERSCORE;
       } else if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_DECIMAL;
       } else {
         return ERR_LEXICAL;
@@ -450,14 +430,10 @@ int scanner_next(token_t *out) {
 
     case STATE_EXP:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP_DIGITS;
       } else if (c == '+' || c == '-') {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP_SIGN;
       } else {
         return ERR_LEXICAL;
@@ -466,9 +442,7 @@ int scanner_next(token_t *out) {
 
     case STATE_EXP_SIGN:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP_DIGITS;
       } else {
         return ERR_LEXICAL;
@@ -477,9 +451,7 @@ int scanner_next(token_t *out) {
 
     case STATE_EXP_DIGITS:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       } else if (c == '_') {
         state = STATE_EXP_UNDERSCORE; // '_' is not stored
       } else if (c == 'd' || c == 'D') {
@@ -494,9 +466,7 @@ int scanner_next(token_t *out) {
       if (c == '_') {
         state = STATE_EXP_UNDERSCORE;
       } else if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_EXP_DIGITS;
       } else {
         return ERR_LEXICAL;
@@ -505,9 +475,7 @@ int scanner_next(token_t *out) {
 
     case STATE_DOT:
       if (isdigit(c)) {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_DECIMAL;
       } else {
         unget_char(c);
@@ -524,9 +492,7 @@ int scanner_next(token_t *out) {
       } else if (c == '\n' || c == EOF) {
         return ERR_LEXICAL;
       } else {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
         state = STATE_STR;
       }
       break;
@@ -544,37 +510,25 @@ int scanner_next(token_t *out) {
       } else if (c == '\n' || c == EOF) {
         return ERR_LEXICAL;
       } else {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       }
       break;
 
     case STATE_STR_ESC:
       if (c == 'n') {
-        if (str_append(&lexeme, '\n') != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('\n');
         state = STATE_STR;
       } else if (c == 't') {
-        if (str_append(&lexeme, '\t') != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('\t');
         state = STATE_STR;
       } else if (c == 'r') {
-        if (str_append(&lexeme, '\r') != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('\r');
         state = STATE_STR;
       } else if (c == '"') {
-        if (str_append(&lexeme, '"') != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('"');
         state = STATE_STR;
       } else if (c == '\\') {
-        if (str_append(&lexeme, '\\') != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('\\');
         state = STATE_STR;
       } else {
         return ERR_LEXICAL;
@@ -601,9 +555,7 @@ int scanner_next(token_t *out) {
       } else if (c == EOF) {
         return ERR_LEXICAL;
       } else {
-        if (str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND(c);
       }
       break;
 
@@ -614,10 +566,8 @@ int scanner_next(token_t *out) {
         return ERR_LEXICAL;
       } else {
         // the '"' was part of the content
-        if (str_append(&lexeme, '"') != ERR_OK ||
-            str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('"');
+        APPEND(c);
         state = STATE_ML;
       }
       break;
@@ -634,12 +584,82 @@ int scanner_next(token_t *out) {
         return ERR_LEXICAL;
       } else {
         // both '"' were part of the content
-        if (str_append(&lexeme, '"') != ERR_OK ||
-            str_append(&lexeme, '"') != ERR_OK ||
-            str_append(&lexeme, (char)c) != ERR_OK) {
-          return ERR_INTERNAL;
-        }
+        APPEND('"');
+        APPEND('"');
+        APPEND(c);
         state = STATE_ML;
+      }
+      break;
+
+    case STATE_DIV:
+      if (c == '/') {
+        state = STATE_LINE_COMMENT;
+      } else if (c == '*') {
+        depth = 0;
+        nl = false;
+        state = STATE_BLOCK;
+      } else {
+        unget_char(c);
+        out->type = TOK_DIV;
+        return ERR_OK;
+      }
+      break;
+
+    case STATE_LINE_COMMENT:
+      if (c == '\n' || c == EOF) {
+        unget_char(c);
+        state = STATE_START;
+      }
+      break;
+
+    case STATE_BLOCK:
+      if (c == '*') {
+        state = STATE_BLOCK_STAR;
+      } else if (c == '/') {
+        state = STATE_BLOCK_SLASH;
+      } else if (c == '\n') {
+        nl = true;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      }
+      break;
+
+    case STATE_BLOCK_SLASH:
+      if (c == '*') {
+        depth++;
+        state = STATE_BLOCK;
+      } else if (c == '\n') {
+        nl = true;
+        state = STATE_BLOCK;
+      } else if (c == '/') {
+        state = STATE_BLOCK_SLASH;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        state = STATE_BLOCK;
+      }
+      break;
+
+    case STATE_BLOCK_STAR:
+      if (c == '/') {
+        if (depth > 0) {
+          depth--; // end of nested comment
+          state = STATE_BLOCK;
+        } else if (nl) {
+          out->type = TOK_NEWLINE; // comment with '\n' acts as end of line
+          return ERR_OK;
+        } else {
+          state = STATE_START; // comment without '\n' acts as whitespace
+        }
+      } else if (c == '*') {
+        state = STATE_BLOCK_STAR;
+      } else if (c == '\n') {
+        nl = true;
+        state = STATE_BLOCK;
+      } else if (c == EOF) {
+        return ERR_LEXICAL;
+      } else {
+        state = STATE_BLOCK;
       }
       break;
     }
