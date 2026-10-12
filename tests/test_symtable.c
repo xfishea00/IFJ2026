@@ -41,12 +41,12 @@ void test_update(void) {
     symtable_insert(table, "promenna", promenna1);
 
     symbol_info_t promenna2 = {TYPE_STRING, SYM_VALUE, 0, NULL};
-    symtable_insert(table, "promenna", promenna2);
+    assert(symtable_insert(table, "promenna", promenna2) == false);
 
     symbol_info_t *info = symtable_search(table, "promenna");
     assert (info != NULL);
-    assert (info->type == TYPE_STRING);
-    assert (info->mode == SYM_VALUE);
+    assert (info->type == TYPE_INT);
+    assert (info->mode == SYM_VARIABLE);
 
     printf("Test aktualizace proběhl úspěšně.\n");
     symtable_free(table);

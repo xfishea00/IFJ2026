@@ -97,8 +97,7 @@ static bool symtable_rehash(symtable_t *table) {
 bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
   symbol_info_t *existing_info = symtable_search(table, key);
   if (existing_info != NULL) {
-    *existing_info = info;
-    return true;
+    return false;
   }
 
   size_t max_optimal_size = (table->max_len * 2) / 3;
@@ -179,8 +178,8 @@ bool symtable_delete(symtable_t *table, const char *key) {
 
     if (position->state == STATE_FREE) {
       return false;
-    } else if (position->state == STATE_OCCUPIED &&
-               strcmp(position->key, key) == 0) {
+    }
+    if (position->state == STATE_OCCUPIED && strcmp(position->key, key) == 0) {
       free(position->key);
       free(position->info.parameter_types);
       position->key = NULL;
