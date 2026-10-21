@@ -100,12 +100,12 @@ typedef enum {
   STATE_LT,                 // f1 after '<'
   STATE_GT,                 // f3 after '>'
   STATE_ASSIGN,             // f5 after '='
-  STATE_EXCL,               // q1 after '!'
+  STATE_EXCL,               // f31 after '!'
   STATE_AT,                 // q2 after '@'
   STATE_AT_M,               // q3 after "@m"
   STATE_AT_MA,              // q4 after "@ma"
   STATE_AT_MAI,             // q5 after "@mai"
-  STATE_UNDERSCORE,         // q6 after '_'
+  STATE_UNDERSCORE,         // f38 after '_'
   STATE_ID,                 // f19 identifier
   STATE_ZERO,               // f20 after '0'
   STATE_INT,                // f23 integer literal
@@ -130,6 +130,9 @@ typedef enum {
   STATE_BLOCK,              // q20 inside block comment
   STATE_BLOCK_SLASH,        // q21 '/' inside block comment
   STATE_BLOCK_STAR,         // q22 '*' inside block comment
+  STATE_PLUS,               // f7 after '+'
+  STATE_AMP,                // q23 after '&'
+  STATE_PIPE,               // f35 after '|'
 } state_t;
 
 // keywords of IFJ26 and their token types
@@ -292,8 +295,7 @@ static int scan_raw(token_t *out) {
         out->type = TOK_EOF;
         return ERR_OK;
       } else if (c == '+') {
-        out->type = TOK_PLUS;
-        return ERR_OK;
+        state = STATE_PLUS;
       } else if (c == '-') {
         out->type = TOK_MINUS;
         return ERR_OK;
@@ -344,6 +346,16 @@ static int scan_raw(token_t *out) {
         state = STATE_INT;
       } else if (c == '"') {
         state = STATE_STR_START;
+      } else if (c == '&') {
+        state = STATE_AMP;
+      } else if (c == '|') {
+        state = STATE_PIPE;
+      } else if (c == '[') {
+        out->type = TOK_LBRACKET;
+        return ERR_OK;
+      } else if (c == ']') {
+        out->type = TOK_RBRACKET;
+        return ERR_OK;
       } else {
         return ERR_LEXICAL; // invalid character
       }
@@ -352,6 +364,9 @@ static int scan_raw(token_t *out) {
     case STATE_LT:
       if (c == '=') {
         out->type = TOK_LE;
+        return ERR_OK;
+      } else if (c == '-') {
+        out->type = TOK_LARROW;
         return ERR_OK;
       } else {
         unget_char(c);
@@ -373,6 +388,9 @@ static int scan_raw(token_t *out) {
       if (c == '=') {
         out->type = TOK_EQ;
         return ERR_OK;
+      } else if (c == '>') {
+        out->type = TOK_ARROW;
+        return ERR_OK;
       } else {
         unget_char(c);
         out->type = TOK_ASSIGN;
@@ -384,7 +402,9 @@ static int scan_raw(token_t *out) {
         out->type = TOK_NEQ;
         return ERR_OK;
       } else {
-        return ERR_LEXICAL; // ! alone is not a valid token
+        unget_char(c);
+        out->type = TOK_NOT;
+        return ERR_OK;
       }
 
     case STATE_AT:
@@ -427,7 +447,9 @@ static int scan_raw(token_t *out) {
         APPEND(c);
         state = STATE_ID;
       } else {
-        return ERR_LEXICAL; // '_' alone is not a valid token
+        unget_char(c);
+        out->type = TOK_UNDERSCORE;
+        return ERR_OK;
       }
       break;
 
@@ -763,6 +785,34 @@ static int scan_raw(token_t *out) {
         state = STATE_BLOCK;
       }
       break;
+
+    case STATE_PLUS:
+      if (c == '+') {
+        out->type = TOK_CONCAT;
+        return ERR_OK;
+      } else {
+        unget_char(c);
+        out->type = TOK_PLUS;
+        return ERR_OK;
+      }
+
+    case STATE_AMP:
+      if (c == '&') {
+        out->type = TOK_AND;
+        return ERR_OK;
+      } else {
+        return ERR_LEXICAL; // '&' alone is not a valid token
+      }
+
+    case STATE_PIPE:
+      if (c == '|') {
+        out->type = TOK_OR;
+        return ERR_OK;
+      } else {
+        unget_char(c);
+        out->type = TOK_PIPE;
+        return ERR_OK;
+      }
     }
   }
 }

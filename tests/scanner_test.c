@@ -3,10 +3,13 @@
  * File:    scanner_test.c
  * Authors: Michal Řezníček (xreznim00)
  * Brief:   tests of the scanner
+ * Run:     make test-scanner
  *
  * AI-generated test (Claude Opus 5.5). Prompt: "napis test pro scanner, over
  * operatory, @main, identifikatory a klicova slova, cisla, retezce, komentare
  * a odsazeni vcetne chybnych vstupu a at vypise co selhalo"
+ * Extended prompt: "dopln do testu tokeny z rozsireni BOOLTHEN, CONTROL, LISTS
+ * a ALGEBDT"
  */
 
 #define _POSIX_C_SOURCE 200809L // fmemopen
@@ -28,7 +31,7 @@ static const char *kw_names[] = {
     "def",   "do",   "while",     "Int",     "Double", "String",
     "if",    "else", "then",      "return",  "import", "var",
     "val",   "Unit", "for",       "Boolean", "match",  "List",
-    "class", "case", "extension", "type",
+    "class", "case", "extension", "type",    "true",   "false",
 };
 
 static const char *type_name(token_type_t t) {
@@ -77,6 +80,26 @@ static const char *type_name(token_type_t t) {
     return "LPAR";
   case TOK_RPAR:
     return "RPAR";
+  case TOK_NOT:
+    return "NOT";
+  case TOK_AND:
+    return "AND";
+  case TOK_OR:
+    return "OR";
+  case TOK_LARROW:
+    return "LARROW";
+  case TOK_LBRACKET:
+    return "LBRACKET";
+  case TOK_RBRACKET:
+    return "RBRACKET";
+  case TOK_PIPE:
+    return "PIPE";
+  case TOK_ARROW:
+    return "ARROW";
+  case TOK_UNDERSCORE:
+    return "UNDERSCORE";
+  case TOK_CONCAT:
+    return "CONCAT";
   default:
     return "?";
   }
@@ -185,8 +208,8 @@ int main(void) {
   T("no spaces", "a<=b", "ID(a) LE ID(b) NEWLINE EOF");
   T("<<", "<<", "LT LT NEWLINE EOF");
   T("===", "===", "EQ ASSIGN NEWLINE EOF");
-  T("! alone", "!", "ERR(1)");
-  T("! space =", "! =", "ERR(1)");
+  T("! alone", "!", "NOT NEWLINE EOF");
+  T("! space =", "! =", "NOT ASSIGN NEWLINE EOF");
   T("@main", "@main def", "AT_MAIN KW(def) NEWLINE EOF");
   T("@main(", "@main(", "AT_MAIN LPAR NEWLINE EOF");
   T("@mainx", "@mainx", "ERR(1)");
@@ -199,18 +222,18 @@ int main(void) {
   printf("--- identifiers and keywords\n");
   T("identifiers", "abc _a a_1 A9 __x",
     "ID(abc) ID(_a) ID(a_1) ID(A9) ID(__x) NEWLINE EOF");
-  T("_ alone", "_", "ERR(1)");
-  T("_ then space", "_ a", "ERR(1)");
+  T("_ alone", "_", "UNDERSCORE NEWLINE EOF");
+  T("_ then space", "_ a", "UNDERSCORE ID(a) NEWLINE EOF");
   T("all keywords",
     "def do while Int Double String if else then return import var val Unit "
-    "for Boolean match List class case extension type",
+    "for Boolean match List class case extension type true false",
     "KW(def) KW(do) KW(while) KW(Int) KW(Double) KW(String) KW(if) KW(else) "
     "KW(then) KW(return) KW(import) KW(var) KW(val) KW(Unit) KW(for) "
     "KW(Boolean) KW(match) KW(List) KW(class) KW(case) KW(extension) "
-    "KW(type) NEWLINE EOF");
+    "KW(type) KW(true) KW(false) NEWLINE EOF");
   T("case sensitive", "int Def DEF", "ID(int) ID(Def) ID(DEF) NEWLINE EOF");
   T("keyword prefix", "defx do_ Ints", "ID(defx) ID(do_) ID(Ints) NEWLINE EOF");
-  T("true is ID", "true false", "ID(true) ID(false) NEWLINE EOF");
+  T("true/false prefix", "trueish False", "ID(trueish) ID(False) NEWLINE EOF");
 
   printf("--- numbers\n");
   T("integers", "0 42 1_000 1__0",
@@ -356,6 +379,38 @@ int main(void) {
   TL("lines of INDENT/DEDENT", "a\n  b\nc\n",
      "1:ID(a) 1:NEWLINE 2:INDENT 2:ID(b) 2:NEWLINE 3:DEDENT 3:ID(c) "
      "3:NEWLINE 4:EOF");
+
+  printf("--- extensions\n");
+  T("all extension operators", "! && || | <- => ++ [ ] _",
+    "NOT AND OR PIPE LARROW ARROW CONCAT LBRACKET RBRACKET UNDERSCORE NEWLINE "
+    "EOF");
+  T("no spaces", "!a&&b||c", "NOT ID(a) AND ID(b) OR ID(c) NEWLINE EOF");
+  T("& alone", "&", "ERR(1)");
+  T("& between ids", "a & b", "ID(a) ERR(1)");
+  T("&&&", "&&&", "AND ERR(1)");
+  T("|||", "|||", "OR PIPE NEWLINE EOF");
+  T("+++", "+++", "CONCAT PLUS NEWLINE EOF");
+  T("plus", "a+b 1+2", "ID(a) PLUS ID(b) INT(1) PLUS INT(2) NEWLINE EOF");
+  T("plus at end", "a +", "ID(a) PLUS NEWLINE EOF");
+  T("concat", "a++b", "ID(a) CONCAT ID(b) NEWLINE EOF");
+  T("<- without spaces", "a<-1", "ID(a) LARROW INT(1) NEWLINE EOF");
+  T("< and minus", "a < -1", "ID(a) LT MINUS INT(1) NEWLINE EOF");
+  T("<=-", "<=-", "LE MINUS NEWLINE EOF");
+  T("=>=", "=>=", "ARROW ASSIGN NEWLINE EOF");
+  T("==>", "==>", "EQ GT NEWLINE EOF");
+  T("!!", "!!", "NOT NOT NEWLINE EOF");
+  T("!==", "!==", "NEQ ASSIGN NEWLINE EOF");
+  T("underscores", "_ _a __ _1", "UNDERSCORE ID(_a) ID(__) ID(_1) NEWLINE EOF");
+  T("_ then paren", "_(", "UNDERSCORE LPAR NEWLINE EOF");
+  T("for", "for i <- 1 to 10",
+    "KW(for) ID(i) LARROW INT(1) ID(to) INT(10) NEWLINE EOF");
+  T("list type", "List[Int]", "KW(List) LBRACKET KW(Int) RBRACKET NEWLINE EOF");
+  T("union type", "type S = Int | String",
+    "KW(type) ID(S) ASSIGN KW(Int) PIPE KW(String) NEWLINE EOF");
+  T("case _", "case _ => x", "KW(case) UNDERSCORE ARROW ID(x) NEWLINE EOF");
+  T("booleans", "!true || false", "NOT KW(true) OR KW(false) NEWLINE EOF");
+  T("_ at line start in block", "a\n  _\n",
+    "ID(a) NEWLINE INDENT UNDERSCORE NEWLINE DEDENT EOF");
 
   if (failures == 0) {
     printf("\nall OK\n");
