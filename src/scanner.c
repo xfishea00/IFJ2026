@@ -160,6 +160,8 @@ static const struct {
     {"case", TOK_KW_CASE},
     {"extension", TOK_KW_EXTENSION},
     {"type", TOK_KW_TYPE},
+    {"true", TOK_KW_TRUE},
+    {"false", TOK_KW_FALSE},
 };
 
 // returns the keyword token type for the text, or TOK_ID if it is not a keyword
