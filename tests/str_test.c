@@ -3,6 +3,7 @@
  * File:    str_test.c
  * Authors: Michal Řezníček (xreznim00)
  * Brief:   tests of the dynamic string
+ * Run:     make test-str
  *
  * AI-generated test (Claude Opus 5.5). Prompt: "napis test pro str.c, over
  * init, pridavani znaku at se buffer zvetsi, clear, take a pridavani po take a

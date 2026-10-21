@@ -21,7 +21,7 @@ FMT_SRCS = $(wildcard src/*.c src/*.h tests/*.c tests/*.h)
 
 TEST_DIR = tests
 
-.PHONY: all build check format build-check valgrind asan clean test test-symtable
+.PHONY: all build check format build-check valgrind asan clean test test-symtable test-scanner test-str
 
 # Default target -- the only one run during evaluation
 all: build
@@ -56,10 +56,18 @@ asan:
 	$(CC) $(CFLAGS) -fsanitize=address,undefined $(SRCS) -o $(TARGET)-asan
 
 clean:
-	rm -rf $(TARGET) $(TARGET)-asan $(OBJS) $(DEPS) tests/test_symtable *.dSYM tests/*.dSYM
+	rm -rf $(TARGET) $(TARGET)-asan $(OBJS) $(DEPS) tests/test_symtable tests/scanner_test tests/str_test *.dSYM tests/*.dSYM
 
-test: test-symtable
+test: test-symtable test-scanner test-str
 
 test-symtable:
 	$(CC) $(CFLAGS) tests/test_symtable.c src/symtable.c -o $(TEST_DIR)/test_symtable
 	./$(TEST_DIR)/test_symtable
+
+test-scanner:
+	$(CC) $(CFLAGS) -fsanitize=address,undefined tests/scanner_test.c src/scanner.c src/str.c -o $(TEST_DIR)/scanner_test
+	./$(TEST_DIR)/scanner_test
+
+test-str:
+	$(CC) $(CFLAGS) tests/str_test.c src/str.c -o $(TEST_DIR)/str_test
+	./$(TEST_DIR)/str_test
