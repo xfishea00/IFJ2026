@@ -41,15 +41,17 @@ typedef enum {
   TOK_KW_VAL,
   TOK_KW_UNIT,
   // extension keywords
-  TOK_KW_FOR,
-  TOK_KW_BOOLEAN,
-  TOK_KW_MATCH,
-  TOK_KW_LIST,
-  TOK_KW_CLASS,
-  TOK_KW_CASE,
-  TOK_KW_EXTENSION,
-  TOK_KW_TYPE,
-  TOK_KW_LAST = TOK_KW_TYPE,
+  TOK_KW_FOR,       // CONTROL
+  TOK_KW_BOOLEAN,   // BOOLTHEN
+  TOK_KW_MATCH,     // ALGEBDT
+  TOK_KW_LIST,      // LISTS
+  TOK_KW_CLASS,     // ALGEBDT
+  TOK_KW_CASE,      // ALGEBDT
+  TOK_KW_EXTENSION, // EXTKW
+  TOK_KW_TYPE,      // ALGEBDT
+  TOK_KW_TRUE,      // BOOLTHEN
+  TOK_KW_FALSE,     // BOOLTHEN
+  TOK_KW_LAST = TOK_KW_FALSE,
 
   // operators
   TOK_LT,        // <
@@ -69,6 +71,17 @@ typedef enum {
   TOK_NEQ,       // !=
   TOK_LPAR,      // (
   TOK_RPAR,      // )
+  // extension operators
+  TOK_NOT,        // !   BOOLTHEN
+  TOK_AND,        // &&  BOOLTHEN
+  TOK_OR,         // ||  BOOLTHEN
+  TOK_LARROW,     // <-  CONTROL
+  TOK_LBRACKET,   // [   LISTS
+  TOK_RBRACKET,   // ]   LISTS
+  TOK_CONCAT,     // ++  LISTS
+  TOK_PIPE,       // |   ALGEBDT
+  TOK_ARROW,      // =>  ALGEBDT
+  TOK_UNDERSCORE, // _   ALGEBDT
 } token_type_t;
 
 // returns true if the token type is a keyword, false otherwise
