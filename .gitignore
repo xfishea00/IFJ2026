@@ -23,3 +23,12 @@ ifj2026-asan
 *.zip
 str_test
 scanner_test
+src/scanneroutputtest.c
+src/examplecode/ifj26.scala
+src/examplecode/test1.scala
+src/examplecode/test2.scala
+src/examplecode/
+.bsp
+.metals
+.scala-build
+
