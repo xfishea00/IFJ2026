@@ -47,6 +47,7 @@ bool check_literal() {
          parser.current_token.type == TOK_DOUBLE_LIT;
 }
 
+
 void match(token_type_t expected) {
   if (check(expected)) {
     advance();
@@ -67,6 +68,29 @@ void match_literal() {
              "LITERAL", parser.current_token.type);
     syntax_error(err_msg);
   }
+}
+
+void match_type(){
+    switch (peek())
+    {
+    case TOK_KW_INT:
+        match(TOK_KW_INT);
+        break;
+    case TOK_KW_DOUBLE:
+        match(TOK_KW_DOUBLE);
+        break;
+    case TOK_KW_STRING:
+        match(TOK_KW_STRING);
+        break;
+    case TOK_KW_UNIT:
+        match(TOK_KW_UNIT);
+        break;
+    case TOK_ID:
+        match(TOK_ID);
+        break;
+    default:
+        syntax_error("Unexpected token in expect_type");
+    }
 }
 
 // Forward Declarations of Parsing Functions 
@@ -187,7 +211,7 @@ void parse_func_declaration(void) {
 void parse_expect_type(void) {
   if (check(TOK_COLON)) {
     match(TOK_COLON);
-    match(TOK_KW_TYPE);
+    match_type();
   }
   // else epsilon
 }
@@ -233,7 +257,7 @@ void parse_param_next(void) {
 void parse_param(void) {
   match(TOK_ID);
   match(TOK_COLON);
-  match(TOK_KW_TYPE);
+  match_type();
 }
 
 void parse_block_statement(void) {
@@ -572,6 +596,7 @@ void parse_case_list(void) {
   // else epsilon
 }
 
+//Reminder to add class constructor variant
 void parse_model(void) {
   if (check_literal()) {
     match_literal();
@@ -581,7 +606,7 @@ void parse_model(void) {
     match(TOK_ID);
     if (check(TOK_COLON)) {
       match(TOK_COLON);
-      match(TOK_KW_TYPE);
+      match_type();
     }
   } else {
     syntax_error("Invalid pattern model in match case");
@@ -601,7 +626,11 @@ void parse_type_definition(void) {
   match(TOK_KW_TYPE);
   match(TOK_ID);
   match(TOK_ASSIGN);
-  match(TOK_KW_TYPE);
+  match_type();
+  while(!check(TOK_NEWLINE)){
+    match(TOK_PIPE);
+    match_type();
+  }
 }
 
 int main(/*int argc, char *argv[]*/) {
