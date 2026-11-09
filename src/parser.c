@@ -91,6 +91,10 @@ void match_type(){
     default:
         syntax_error("Unexpected token in expect_type");
     }
+    if (peek() == TOK_PIPE){
+      match(TOK_PIPE);
+      match_type();
+    }
 }
 
 // Forward Declarations of Parsing Functions 
@@ -188,6 +192,10 @@ void parse_top_level_list(void) {
     break;
   case TOK_EOF:
     // epsilon
+    break;
+  case TOK_NEWLINE:
+    match(TOK_NEWLINE);
+    parse_top_level_list();
     break;
   default:
     syntax_error("Unexpected token in top-level list");
@@ -340,6 +348,9 @@ void parse_id_stmt_tail(void) {
   } else if (check(TOK_LPAR)) {
     // Function call: id(args)...
     parse_arg_groups();
+  } else if (check(TOK_KW_MATCH)){
+    //makeshift solution
+    parse_expr_match_tail();
   } else {
     // Id expression or operation tail
   }
@@ -541,10 +552,17 @@ void parse_expr_match_tail(void) {
     match(TOK_KW_MATCH);
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
+      //makeshift
+    while (check(TOK_INDENT))
+      match(TOK_INDENT);
     parse_case_list();
+    while (check(TOK_DEDENT))
+      match(TOK_DEDENT);
   }
   // else epsilon
 }
+
+
 
 void parse_list_def(void) {
   match(TOK_KW_LIST);
@@ -615,7 +633,7 @@ void parse_model(void) {
 
 void parse_class(void) {
   match(TOK_KW_CASE);
-  match(TOK_ID);
+  match(TOK_KW_CLASS);
   match(TOK_ID);
   match(TOK_LPAR);
   parse_param_list();
@@ -631,18 +649,17 @@ void parse_type_definition(void) {
     match(TOK_PIPE);
     match_type();
   }
+  while (check(TOK_NEWLINE))
+      match(TOK_NEWLINE);
 }
 
-int main(/*int argc, char *argv[]*/) {
-  printf("IFJ26 Recursive Descent Parser Initialized.\n");
-
-  FILE *test = fopen("src/examplecode/test1.scala", "r");
-  if (test == NULL) {
-    perror("Error opening file");
+int main(void) {
+  if (scanner_init(stdin) != ERR_OK) {
+    fprintf(stderr, "Failed to initialize scanner.\n");
+    return ERR_LEXICAL;
   }
-  scanner_init(test);
   advance();
   parse_program();
-  printf("Parsing completed successfully with 0 errors.\n");
+  scanner_free();
   return ERR_OK;
 }
