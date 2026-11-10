@@ -88,6 +88,15 @@ void match_type(){
     case TOK_ID:
         match(TOK_ID);
         break;
+    case TOK_KW_BOOLEAN:
+        match(TOK_KW_BOOLEAN);
+        break;
+    case TOK_KW_LIST:
+        match(TOK_KW_LIST);
+        match(TOK_LBRACKET);
+        match_type();
+        match(TOK_RBRACKET);
+        break;
     default:
         syntax_error("Unexpected token in expect_type");
     }
@@ -532,8 +541,20 @@ void parse_expression(void) {
   if (check(TOK_KW_LIST)) {
     parse_list_def();
   } else {
-    parse_non_id_expression();
-    parse_expr_match_tail();
+    //filters out expressions for testing purposes
+    int lpar_cnt = 0;
+    while((token_is_keyword(parser.current_token.type) != true || check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) && !(check(TOK_RPAR) && lpar_cnt == 0)){
+      if(parser.current_token.type == TOK_NEWLINE){
+        break;
+      } else if (check(TOK_RPAR)){
+        lpar_cnt -= 1;
+      } else if (check(TOK_LPAR)){
+        lpar_cnt += 1;
+      }
+      advance();
+    }
+    //parse_non_id_expression();
+    //parse_expr_match_tail();
   }
 }
 
@@ -543,7 +564,8 @@ void parse_non_id_expression(void) {
   } else if (check_literal()) {
     match_literal();
   } else {
-    advance();
+    parse_expression(); //makeshift
+    //advance();
   }
 }
 
@@ -553,11 +575,9 @@ void parse_expr_match_tail(void) {
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
       //makeshift
-    while (check(TOK_INDENT))
-      match(TOK_INDENT);
+    match(TOK_INDENT);
     parse_case_list();
-    while (check(TOK_DEDENT))
-      match(TOK_DEDENT);
+    match(TOK_DEDENT);
   }
   // else epsilon
 }
@@ -625,6 +645,16 @@ void parse_model(void) {
     if (check(TOK_COLON)) {
       match(TOK_COLON);
       match_type();
+    } else if (check(TOK_LPAR)){
+      //class constructor
+      match(TOK_LPAR);
+      while(!check(TOK_RPAR)){
+        match(TOK_ID);
+        if(!check(TOK_RPAR))
+        match(TOK_COMMA);
+      }
+      match(TOK_RPAR);
+
     }
   } else {
     syntax_error("Invalid pattern model in match case");
