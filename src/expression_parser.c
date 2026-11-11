@@ -39,3 +39,25 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
     }
 }
 
+const precedence_t table[19][19] = {
+//          id  +  - ++  *  /  <  > <= >= == !=  ! && ||  .  (  )  $
+/* id */    {X, H, H, H, H, H, H, H, H, H, H, H, X, H, H, H, X, H, H},
+/* +  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* -  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* ++ */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* *  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* /  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* <  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* >  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* <= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* >= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* == */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* != */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
+/* !  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
+/* && */    {L, L, L, L, L, L, L, L, L, L, L, L, L, H, H, L, L, H, H},
+/* || */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, H, L, L, H, H},
+/* .  */    {L, H, H, H, H, H, H, H, H, H, H, H, H, H, H, H, L, H, H},
+/* (  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, E, X},
+/* )  */    {X, H, H, H, H, H, H, H, H, H, H, H, X, H, H, H, X, H, H},
+/* $  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, X, X}
+};

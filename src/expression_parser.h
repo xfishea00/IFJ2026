@@ -46,6 +46,11 @@ typedef enum {
     PRE_ERROR =  ' ',
 } precedence_t
 
+#define L PRE_LOWER
+#define H PRE_HIGHER
+#define E PRE_EQUAL
+#define X PRE_ERROR
+
 precedence_terminal_t map_token_to_precedence(token_t);
 
 #endif
