@@ -289,6 +289,8 @@ void parse_block(void) {
   match(TOK_NEWLINE);
   match(TOK_INDENT);
   parse_statement_list();
+  while(!check(TOK_DEDENT)) //unsure
+    parse_statement_list();
   match(TOK_DEDENT);
 }
 
@@ -362,6 +364,9 @@ void parse_id_stmt_tail(void) {
     parse_expr_match_tail();
   } else {
     // Id expression or operation tail
+    if(parser.current_token.type <= 59 && parser.current_token.type >= 33){ //makeshift operators
+      parse_expression();
+    }
   }
 }
 
@@ -543,13 +548,17 @@ void parse_expression(void) {
   } else {
     //filters out expressions for testing purposes
     int lpar_cnt = 0;
-    while((token_is_keyword(parser.current_token.type) != true || check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) && !(check(TOK_RPAR) && lpar_cnt == 0)){
+    while((token_is_keyword(parser.current_token.type) != true || (check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) || check(TOK_KW_MATCH)) && !(check(TOK_RPAR) && lpar_cnt == 0)){
       if(parser.current_token.type == TOK_NEWLINE){
         break;
       } else if (check(TOK_RPAR)){
         lpar_cnt -= 1;
       } else if (check(TOK_LPAR)){
         lpar_cnt += 1;
+      } else if (check(TOK_KW_IF)){
+        parse_if_statement();
+      } else if (check(TOK_KW_MATCH)){
+        parse_expr_match_tail();
       }
       advance();
     }
@@ -559,6 +568,7 @@ void parse_expression(void) {
 }
 
 void parse_non_id_expression(void) {
+  /*
   if (check(TOK_KW_LIST)) {
     parse_list_def();
   } else if (check_literal()) {
@@ -567,6 +577,8 @@ void parse_non_id_expression(void) {
     parse_expression(); //makeshift
     //advance();
   }
+  */
+ parse_expression();
 }
 
 void parse_expr_match_tail(void) {
