@@ -12,8 +12,8 @@
 
 // AI-generated skeleton (Claude Opus 5.5): node_new, ast_new_while and the
 // structure of ast_free; the rest written by hand.
-// Prompt: "How to write ast.c - give me a skeleton with one example
-//          constructor and the structure of ast_free."
+// Prompt: "dej mi kostru pomocne funkce node_new, jednoho konstruktoru jako
+//          priklad a struktury ast_free"
 
 // allocates zeroed node of given kind
 static ast_node_t *node_new(ast_node_kind_t kind, int line) {
