@@ -11,13 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "error.h"
+#include "symtable.h"
 
-// Error codes 
-#define ERR_OK 0
-#define ERR_LEXICAL 1
-#define ERR_SYNTAX 2
-#define ERR_SEM_UNDEFINED 3
-#define ERR_SEM_TYPE 4
 
 // Global / Parser Context
 typedef struct {
