@@ -5,15 +5,14 @@
  * Brief:   Syntax analysis
  */
 
+#include "error.h"
 #include "scanner.h"
+#include "symtable.h"
 #include "token.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "error.h"
-#include "symtable.h"
-
 
 // Global / Parser Context
 typedef struct {
@@ -31,26 +30,30 @@ void syntax_error(const char *msg) {
 }
 
 // helper functions
-void advance(void) { scanner_next(&(parser.current_token)); }
-
-token_type_t peek(void) { return parser.current_token.type; }
-
-bool check(token_type_t type) { return parser.current_token.type == type; }
-
-bool check_literal() {
-  return parser.current_token.type == TOK_INT_LIT ||
-         parser.current_token.type == TOK_STRING_LIT ||
-         parser.current_token.type == TOK_DOUBLE_LIT;
+static void advance(void) {
+  // token_free(&parser.current_token);
+  int rc = scanner_next(&parser.current_token);
+  if (rc != ERR_OK) {
+    fprintf(stderr, "Scanner error while parsing (code: %d)\n", rc);
+    exit(rc);
+  }
 }
 
+static token_type_t peek(void) { return parser.current_token.type; }
 
-void match(token_type_t expected) {
+static bool check(token_type_t type) { return peek() == type; }
+
+static bool check_literal(void) {
+  return check(TOK_INT_LIT) || check(TOK_STRING_LIT) || check(TOK_DOUBLE_LIT);
+}
+
+static void match(token_type_t expected) {
   if (check(expected)) {
     advance();
   } else {
     char err_msg[100];
     snprintf(err_msg, sizeof(err_msg), "Expected token type %d, but got %d",
-             expected, parser.current_token.type);
+             expected, peek());
     syntax_error(err_msg);
   }
 }
@@ -66,43 +69,32 @@ void match_literal() {
   }
 }
 
-void match_type(){
-    switch (peek())
-    {
-    case TOK_KW_INT:
-        match(TOK_KW_INT);
-        break;
-    case TOK_KW_DOUBLE:
-        match(TOK_KW_DOUBLE);
-        break;
-    case TOK_KW_STRING:
-        match(TOK_KW_STRING);
-        break;
-    case TOK_KW_UNIT:
-        match(TOK_KW_UNIT);
-        break;
-    case TOK_ID:
-        match(TOK_ID);
-        break;
-    case TOK_KW_BOOLEAN:
-        match(TOK_KW_BOOLEAN);
-        break;
-    case TOK_KW_LIST:
-        match(TOK_KW_LIST);
-        match(TOK_LBRACKET);
-        match_type();
-        match(TOK_RBRACKET);
-        break;
-    default:
-        syntax_error("Unexpected token in expect_type");
-    }
-    if (peek() == TOK_PIPE){
-      match(TOK_PIPE);
-      match_type();
-    }
+void match_type() {
+  switch (peek()) {
+  case TOK_KW_INT:
+  case TOK_KW_DOUBLE:
+  case TOK_KW_STRING:
+  case TOK_KW_UNIT:
+  case TOK_KW_BOOLEAN:
+  case TOK_ID:
+    advance();
+    break;
+  case TOK_KW_LIST:
+    match(TOK_KW_LIST);
+    match(TOK_LBRACKET);
+    match_type();
+    match(TOK_RBRACKET);
+    break;
+  default:
+    syntax_error("Unexpected token in expect_type");
+  }
+  if (check(TOK_PIPE)) {
+    match(TOK_PIPE);
+    match_type();
+  }
 }
 
-// Forward Declarations of Parsing Functions 
+// Forward Declarations of Parsing Functions
 void parse_program(void);
 void parse_prologue(void);
 void parse_top_level_list(void);
@@ -285,7 +277,7 @@ void parse_block(void) {
   match(TOK_NEWLINE);
   match(TOK_INDENT);
   parse_statement_list();
-  while(!check(TOK_DEDENT)) //unsure
+  while (!check(TOK_DEDENT)) // unsure
     parse_statement_list();
   match(TOK_DEDENT);
 }
@@ -355,12 +347,13 @@ void parse_id_stmt_tail(void) {
   } else if (check(TOK_LPAR)) {
     // Function call: id(args)...
     parse_arg_groups();
-  } else if (check(TOK_KW_MATCH)){
-    //makeshift solution
+  } else if (check(TOK_KW_MATCH)) {
+    // makeshift solution
     parse_expr_match_tail();
   } else {
     // Id expression or operation tail
-    if(parser.current_token.type <= 59 && parser.current_token.type >= 33){ //makeshift operators
+    if (parser.current_token.type <= 59 &&
+        parser.current_token.type >= 33) { // makeshift operators
       parse_expression();
     }
   }
@@ -542,24 +535,27 @@ void parse_expression(void) {
   if (check(TOK_KW_LIST)) {
     parse_list_def();
   } else {
-    //filters out expressions for testing purposes
+    // filters out expressions for testing purposes
     int lpar_cnt = 0;
-    while((token_is_keyword(parser.current_token.type) != true || (check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) || check(TOK_KW_MATCH)) && !(check(TOK_RPAR) && lpar_cnt == 0)){
-      if(parser.current_token.type == TOK_NEWLINE){
+    while ((token_is_keyword(parser.current_token.type) != true ||
+            (check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) ||
+            check(TOK_KW_MATCH)) &&
+           !(check(TOK_RPAR) && lpar_cnt == 0)) {
+      if (parser.current_token.type == TOK_NEWLINE) {
         break;
-      } else if (check(TOK_RPAR)){
+      } else if (check(TOK_RPAR)) {
         lpar_cnt -= 1;
-      } else if (check(TOK_LPAR)){
+      } else if (check(TOK_LPAR)) {
         lpar_cnt += 1;
-      } else if (check(TOK_KW_IF)){
+      } else if (check(TOK_KW_IF)) {
         parse_if_statement();
-      } else if (check(TOK_KW_MATCH)){
+      } else if (check(TOK_KW_MATCH)) {
         parse_expr_match_tail();
       }
       advance();
     }
-    //parse_non_id_expression();
-    //parse_expr_match_tail();
+    // parse_non_id_expression();
+    // parse_expr_match_tail();
   }
 }
 
@@ -574,7 +570,7 @@ void parse_non_id_expression(void) {
     //advance();
   }
   */
- parse_expression();
+  parse_expression();
 }
 
 void parse_expr_match_tail(void) {
@@ -582,15 +578,13 @@ void parse_expr_match_tail(void) {
     match(TOK_KW_MATCH);
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
-      //makeshift
+    // makeshift
     match(TOK_INDENT);
     parse_case_list();
     match(TOK_DEDENT);
   }
   // else epsilon
 }
-
-
 
 void parse_list_def(void) {
   match(TOK_KW_LIST);
@@ -642,7 +636,7 @@ void parse_case_list(void) {
   // else epsilon
 }
 
-//Reminder to add class constructor variant
+// Reminder to add class constructor variant
 void parse_model(void) {
   if (check_literal()) {
     match_literal();
@@ -653,16 +647,15 @@ void parse_model(void) {
     if (check(TOK_COLON)) {
       match(TOK_COLON);
       match_type();
-    } else if (check(TOK_LPAR)){
-      //class constructor
+    } else if (check(TOK_LPAR)) {
+      // class constructor
       match(TOK_LPAR);
-      while(!check(TOK_RPAR)){
+      while (!check(TOK_RPAR)) {
         match(TOK_ID);
-        if(!check(TOK_RPAR))
-        match(TOK_COMMA);
+        if (!check(TOK_RPAR))
+          match(TOK_COMMA);
       }
       match(TOK_RPAR);
-
     }
   } else {
     syntax_error("Invalid pattern model in match case");
@@ -683,18 +676,19 @@ void parse_type_definition(void) {
   match(TOK_ID);
   match(TOK_ASSIGN);
   match_type();
-  while(!check(TOK_NEWLINE)){
+  while (!check(TOK_NEWLINE)) {
     match(TOK_PIPE);
     match_type();
   }
   while (check(TOK_NEWLINE))
-      match(TOK_NEWLINE);
+    match(TOK_NEWLINE);
 }
 
 int main(void) {
-  if (scanner_init(stdin) != ERR_OK) {
+  int rc = scanner_init(stdin);
+  if (rc != ERR_OK) {
     fprintf(stderr, "Failed to initialize scanner.\n");
-    return ERR_LEXICAL;
+    return rc;
   }
   advance();
   parse_program();
