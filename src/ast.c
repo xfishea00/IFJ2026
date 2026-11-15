@@ -186,6 +186,122 @@ ast_node_t *ast_new_call(char *name, ast_list_t *arg_lists, int arg_list_count,
   return node;
 }
 
+ast_node_t *ast_new_for(char *var_name, ast_node_t *source, ast_list_t guards,
+                        ast_node_t *body, int line) {
+  ast_node_t *node = node_new(AST_FOR, line);
+  if (node != NULL) {
+    node->for_stmt.var_name = var_name;
+    node->for_stmt.source = source;
+    node->for_stmt.guards = guards;
+    node->for_stmt.body = body;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_range(bool is_until, ast_node_t *from, ast_node_t *end,
+                          ast_node_t *step, int line) {
+  ast_node_t *node = node_new(AST_RANGE, line);
+  if (node != NULL) {
+    node->range.is_until = is_until;
+    node->range.from = from;
+    node->range.end = end;
+    node->range.step = step;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_list_lit(ast_list_t items, int line) {
+  ast_node_t *node = node_new(AST_LIST_LIT, line);
+  if (node != NULL) {
+    node->list_lit.items = items;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_list_range(ast_node_t *start, ast_node_t *end,
+                               ast_node_t *step, int line) {
+  ast_node_t *node = node_new(AST_LIST_RANGE, line);
+  if (node != NULL) {
+    node->list_range.start = start;
+    node->list_range.end = end;
+    node->list_range.step = step;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_member(char *name, ast_node_t *object, bool has_parens,
+                           ast_list_t args, int line) {
+  ast_node_t *node = node_new(AST_MEMBER, line);
+  if (node != NULL) {
+    node->member.name = name;
+    node->member.object = object;
+    node->member.has_parens = has_parens;
+    node->member.args = args;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_type_alias(char *name, type_t *aliased, int line) {
+  ast_node_t *node = node_new(AST_TYPE_ALIAS, line);
+  if (node != NULL) {
+    node->type_alias.name = name;
+    node->type_alias.aliased = aliased;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_case_class(char *name, ast_list_t attrs, int line) {
+  ast_node_t *node = node_new(AST_CASE_CLASS, line);
+  if (node != NULL) {
+    node->case_class.name = name;
+    node->case_class.attrs = attrs;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_match(ast_node_t *subject, ast_list_t cases, int line) {
+  ast_node_t *node = node_new(AST_MATCH, line);
+  if (node != NULL) {
+    node->match.subject = subject;
+    node->match.cases = cases;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_case(ast_node_t *pattern, ast_node_t *guard,
+                         ast_node_t *body, int line) {
+  ast_node_t *node = node_new(AST_CASE, line);
+  if (node != NULL) {
+    node->case_branch.pattern = pattern;
+    node->case_branch.guard = guard;
+    node->case_branch.body = body;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_pat_typed(char *name, type_t *decl_type, int line) {
+  ast_node_t *node = node_new(AST_PAT_TYPED, line);
+  if (node != NULL) {
+    node->pat_typed.name = name;
+    node->pat_typed.decl_type = decl_type;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_pat_class(char *name, ast_list_t bindings, int line) {
+  ast_node_t *node = node_new(AST_PAT_CLASS, line);
+  if (node != NULL) {
+    node->pat_class.name = name;
+    node->pat_class.bindings = bindings;
+  }
+  return node;
+}
+
+ast_node_t *ast_new_pat_wildcard(int line) {
+  ast_node_t *node = node_new(AST_PAT_WILDCARD, line);
+  return node;
+}
+
 bool ast_list_append(ast_list_t *list, ast_node_t *node) {
   if (list->count >= list->capacity) {
     int new_capacity = list->capacity * 2;
@@ -303,6 +419,67 @@ void ast_free(ast_node_t *node) {
     }
     free(node->call.arg_lists);
     free(node->call.name);
+    break;
+
+  case AST_FOR:
+    free(node->for_stmt.var_name);
+    ast_free(node->for_stmt.source);
+    list_free(&node->for_stmt.guards);
+    ast_free(node->for_stmt.body);
+    break;
+
+  case AST_RANGE:
+    ast_free(node->range.from);
+    ast_free(node->range.end);
+    ast_free(node->range.step);
+    break;
+
+  case AST_LIST_LIT:
+    list_free(&node->list_lit.items);
+    break;
+
+  case AST_LIST_RANGE:
+    ast_free(node->list_range.start);
+    ast_free(node->list_range.end);
+    ast_free(node->list_range.step);
+    break;
+
+  case AST_MEMBER:
+    free(node->member.name);
+    ast_free(node->member.object);
+    list_free(&node->member.args);
+    break;
+
+  case AST_TYPE_ALIAS:
+    free(node->type_alias.name);
+    break;
+
+  case AST_CASE_CLASS:
+    free(node->case_class.name);
+    list_free(&node->case_class.attrs);
+    break;
+
+  case AST_MATCH:
+    ast_free(node->match.subject);
+    list_free(&node->match.cases);
+    break;
+
+  case AST_CASE:
+    ast_free(node->case_branch.pattern);
+    ast_free(node->case_branch.guard);
+    ast_free(node->case_branch.body);
+    break;
+
+  case AST_PAT_TYPED:
+    free(node->pat_typed.name);
+    break;
+
+  case AST_PAT_CLASS:
+    free(node->pat_class.name);
+    list_free(&node->pat_class.bindings);
+    break;
+
+  case AST_PAT_WILDCARD:
     break;
   }
   free(node);
