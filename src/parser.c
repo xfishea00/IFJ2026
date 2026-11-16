@@ -766,6 +766,7 @@ int main(void) {
   }
   advance();
   ast_node_t *ast_root = parse_program();
+  ast_print(ast_root);
   scanner_free();
   ast_free(ast_root);
   return ERR_OK;

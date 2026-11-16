@@ -7,6 +7,7 @@
 
 #include "ast.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 #define LIST_INIT_CAPACITY 4
 
@@ -106,6 +107,7 @@ ast_node_t *ast_new_return(ast_node_t *value, int line) {
 ast_node_t *ast_new_int(int64_t value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = AST_LITERAL_INT;
     node->literal.int_val = value;
     // TODO: node->type = Int base type
   }
@@ -115,6 +117,7 @@ ast_node_t *ast_new_int(int64_t value, int line) {
 ast_node_t *ast_new_double(double value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = AST_LITERAL_DOUBLE;
     node->literal.double_val = value;
     // TODO: node->type = Double base type
   }
@@ -124,6 +127,7 @@ ast_node_t *ast_new_double(double value, int line) {
 ast_node_t *ast_new_string(char *value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = AST_LITERAL_STRING;
     node->literal.string_val = value;
     // TODO: node->type = String base type
   }
@@ -133,6 +137,7 @@ ast_node_t *ast_new_string(char *value, int line) {
 ast_node_t *ast_new_bool(bool value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = AST_LITERAL_BOOL;
     node->literal.bool_val = value;
     // TODO: node->type = Boolean base type
   }
@@ -142,6 +147,7 @@ ast_node_t *ast_new_bool(bool value, int line) {
 ast_node_t *ast_new_unit(int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = AST_LITERAL_UNIT;
     // TODO: node->type = Unit base type
   }
   return node;
@@ -484,3 +490,253 @@ void ast_free(ast_node_t *node) {
   }
   free(node);
 }
+
+static void print_indent(int depth) {
+  for (int i = 0; i < depth; i++) {
+    fputs("  ", stdout);
+  }
+}
+
+static const char *operator_name(ast_op_t op) {
+  switch (op) {
+  case OP_ADD:
+    return "+";
+  case OP_SUB:
+    return "-";
+  case OP_MUL:
+    return "*";
+  case OP_DIV:
+    return "/";
+  case OP_LT:
+    return "<";
+  case OP_GT:
+    return ">";
+  case OP_LE:
+    return "<=";
+  case OP_GE:
+    return ">=";
+  case OP_EQ:
+    return "==";
+  case OP_NEQ:
+    return "!=";
+  case OP_AND:
+    return "&&";
+  case OP_OR:
+    return "||";
+  case OP_NOT:
+    return "!";
+  case OP_NEG:
+    return "unary -";
+  case OP_CONCAT:
+    return "++";
+  }
+  return "unknown";
+}
+
+static void print_string(const char *value) {
+  putchar('"');
+  for (const unsigned char *p = (const unsigned char *)value; *p != '\0'; p++) {
+    switch (*p) {
+    case '\\':
+      fputs("\\\\", stdout);
+      break;
+    case '"':
+      fputs("\\\"", stdout);
+      break;
+    case '\n':
+      fputs("\\n", stdout);
+      break;
+    case '\r':
+      fputs("\\r", stdout);
+      break;
+    case '\t':
+      fputs("\\t", stdout);
+      break;
+    default:
+      putchar(*p);
+      break;
+    }
+  }
+  putchar('"');
+}
+
+static void print_node(const ast_node_t *node, int depth, const char *label) {
+  if (node == NULL) {
+    return;
+  }
+  print_indent(depth);
+  if (label != NULL) {
+    printf("%s: ", label);
+  }
+
+  switch (node->kind) {
+  case AST_PROGRAM:
+    printf("Program (line %d)\n", node->line);
+    for (int i = 0; i < node->program.defs.count; i++) {
+      print_node(node->program.defs.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_FUNC_DEF:
+    printf("Function %s%s (line %d)\n", node->func_def.name,
+           node->func_def.is_main ? " [main]" : "", node->line);
+    for (int i = 0; i < node->func_def.param_list_count; i++) {
+      print_indent(depth + 1);
+      printf("Parameters (group %d)\n", i + 1);
+      for (int j = 0; j < node->func_def.param_lists[i].count; j++) {
+        print_node(node->func_def.param_lists[i].items[j], depth + 2, NULL);
+      }
+    }
+    print_node(node->func_def.body, depth + 1, "Body");
+    break;
+  case AST_PARAM:
+    printf("Parameter %s (line %d)\n", node->param.name, node->line);
+    break;
+  case AST_BLOCK:
+    printf("Block (line %d)\n", node->line);
+    for (int i = 0; i < node->block.stmts.count; i++) {
+      print_node(node->block.stmts.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_VAR_DEF:
+    printf("%s %s (line %d)\n", node->var_def.is_mutable ? "Var" : "Val",
+           node->var_def.name, node->line);
+    print_node(node->var_def.init, depth + 1, "Initializer");
+    break;
+  case AST_ASSIGN:
+    printf("Assignment to %s (line %d)\n", node->assign.name, node->line);
+    print_node(node->assign.value, depth + 1, "Value");
+    break;
+  case AST_IF:
+    printf("If (line %d)\n", node->line);
+    print_node(node->if_stmt.cond, depth + 1, "Condition");
+    print_node(node->if_stmt.then_branch, depth + 1, "Then");
+    print_node(node->if_stmt.else_branch, depth + 1, "Else");
+    break;
+  case AST_WHILE:
+    printf("While (line %d)\n", node->line);
+    print_node(node->while_stmt.cond, depth + 1, "Condition");
+    print_node(node->while_stmt.body, depth + 1, "Body");
+    break;
+  case AST_RETURN:
+    printf("Return (line %d)\n", node->line);
+    print_node(node->return_stmt.value, depth + 1, "Value");
+    break;
+  case AST_LITERAL:
+    switch (node->literal.kind) {
+    case AST_LITERAL_INT:
+      printf("Integer %lld (line %d)\n", (long long)node->literal.int_val,
+             node->line);
+      break;
+    case AST_LITERAL_DOUBLE:
+      printf("Double %g (line %d)\n", node->literal.double_val, node->line);
+      break;
+    case AST_LITERAL_STRING:
+      printf("String ");
+      print_string(node->literal.string_val);
+      printf(" (line %d)\n", node->line);
+      break;
+    case AST_LITERAL_BOOL:
+      printf("Boolean %s (line %d)\n",
+             node->literal.bool_val ? "true" : "false", node->line);
+      break;
+    case AST_LITERAL_UNIT:
+      printf("Unit (line %d)\n", node->line);
+      break;
+    }
+    break;
+  case AST_ID:
+    printf("Identifier %s (line %d)\n",
+           node->id.name != NULL ? node->id.name : "_", node->line);
+    break;
+  case AST_BINARY:
+    printf("Binary %s (line %d)\n", operator_name(node->binary.op), node->line);
+    print_node(node->binary.left, depth + 1, "Left");
+    print_node(node->binary.right, depth + 1, "Right");
+    break;
+  case AST_UNARY:
+    printf("Unary %s (line %d)\n", operator_name(node->unary.op), node->line);
+    print_node(node->unary.operand, depth + 1, "Operand");
+    break;
+  case AST_CALL:
+    printf("Call %s (line %d)\n", node->call.name, node->line);
+    for (int i = 0; i < node->call.arg_list_count; i++) {
+      print_indent(depth + 1);
+      printf("Arguments (group %d)\n", i + 1);
+      for (int j = 0; j < node->call.arg_lists[i].count; j++) {
+        print_node(node->call.arg_lists[i].items[j], depth + 2, NULL);
+      }
+    }
+    break;
+  case AST_FOR:
+    printf("For %s (line %d)\n", node->for_stmt.var_name, node->line);
+    print_node(node->for_stmt.source, depth + 1, "Source");
+    for (int i = 0; i < node->for_stmt.guards.count; i++) {
+      print_node(node->for_stmt.guards.items[i], depth + 1, "Guard");
+    }
+    print_node(node->for_stmt.body, depth + 1, "Body");
+    break;
+  case AST_RANGE:
+    printf("Range (%s) (line %d)\n", node->range.is_until ? "until" : "to",
+           node->line);
+    print_node(node->range.from, depth + 1, "From");
+    print_node(node->range.end, depth + 1, "End");
+    print_node(node->range.step, depth + 1, "Step");
+    break;
+  case AST_LIST_LIT:
+    printf("List literal (line %d)\n", node->line);
+    for (int i = 0; i < node->list_lit.items.count; i++) {
+      print_node(node->list_lit.items.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_LIST_RANGE:
+    printf("List range (line %d)\n", node->line);
+    print_node(node->list_range.start, depth + 1, "Start");
+    print_node(node->list_range.end, depth + 1, "End");
+    print_node(node->list_range.step, depth + 1, "Step");
+    break;
+  case AST_MEMBER:
+    printf("Member %s%s (line %d)\n", node->member.name,
+           node->member.has_parens ? "()" : "", node->line);
+    print_node(node->member.object, depth + 1, "Object");
+    for (int i = 0; i < node->member.args.count; i++) {
+      print_node(node->member.args.items[i], depth + 1, "Argument");
+    }
+    break;
+  case AST_TYPE_ALIAS:
+    printf("Type alias %s (line %d)\n", node->type_alias.name, node->line);
+    break;
+  case AST_CASE_CLASS:
+    printf("Case class %s (line %d)\n", node->case_class.name, node->line);
+    for (int i = 0; i < node->case_class.attrs.count; i++) {
+      print_node(node->case_class.attrs.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_MATCH:
+    printf("Match (line %d)\n", node->line);
+    print_node(node->match.subject, depth + 1, "Subject");
+    for (int i = 0; i < node->match.cases.count; i++) {
+      print_node(node->match.cases.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_CASE:
+    printf("Case (line %d)\n", node->line);
+    print_node(node->case_branch.pattern, depth + 1, "Pattern");
+    print_node(node->case_branch.guard, depth + 1, "Guard");
+    print_node(node->case_branch.body, depth + 1, "Body");
+    break;
+  case AST_PAT_TYPED:
+    printf("Typed pattern %s (line %d)\n", node->pat_typed.name, node->line);
+    break;
+  case AST_PAT_CLASS:
+    printf("Class pattern %s (line %d)\n", node->pat_class.name, node->line);
+    for (int i = 0; i < node->pat_class.bindings.count; i++) {
+      print_node(node->pat_class.bindings.items[i], depth + 1, NULL);
+    }
+    break;
+  case AST_PAT_WILDCARD:
+    printf("Wildcard pattern (line %d)\n", node->line);
+    break;
+  }
+}
+
+void ast_print(const ast_node_t *node) { print_node(node, 0, NULL); }

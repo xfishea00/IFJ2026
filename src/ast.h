@@ -60,6 +60,14 @@ typedef enum {
   OP_CONCAT,
 } ast_op_t;
 
+typedef enum {
+  AST_LITERAL_INT,
+  AST_LITERAL_DOUBLE,
+  AST_LITERAL_STRING,
+  AST_LITERAL_BOOL,
+  AST_LITERAL_UNIT,
+} ast_literal_kind_t;
+
 // forward declarations, type and symbol are defined in other modules
 typedef struct ast_node ast_node_t;
 typedef struct type type_t;
@@ -134,6 +142,7 @@ struct ast_node {
 
     // valid field is given by node->type
     struct {
+      ast_literal_kind_t kind;
       int64_t int_val;
       double double_val;
       char *string_val;
@@ -284,5 +293,8 @@ ast_list_t *ast_lists_add(ast_list_t **lists, int *count);
 
 // releases node with its whole subtree, NULL is allowed
 void ast_free(ast_node_t *node);
+
+// prints the tree to stdout
+void ast_print(const ast_node_t *node);
 
 #endif // AST_H
