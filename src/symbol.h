@@ -36,6 +36,7 @@ struct symbol {
   bool is_mutable;    // SYM_VAR only
   bool is_builtin;    // SYM_FUNC only
   func_state_t state; // SYM_FUNC only
+  int param_count;    // builtin SYM_FUNC only
 };
 
 // adds new symbol to the global list, name is not copied

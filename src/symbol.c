@@ -42,6 +42,7 @@ symbol_t *symbol_new(symbol_kind_t kind, char *name, ast_node_t *decl) {
   sym->is_mutable = false;
   sym->is_builtin = false;
   sym->state = FUNC_NOT_DONE;
+  sym->param_count = 0;
   symbols[symbol_count++] = sym;
   return sym;
 }
@@ -66,6 +67,24 @@ typedef struct scope {
 static scope_t *current; // innermost scope
 static scope_t *global;
 
+// builtin functions, inserted into the global scope by scope_init
+static const struct {
+  const char *name;
+  int param_count;
+} builtin_functions[] = {{"print", 1},
+                         {"readLine", 0},
+                         {"readInt", 0},
+                         {"readDouble", 0},
+                         {"toStr", 1},
+                         {"toInt", 1},
+                         {"strLength", 1},
+                         {"subStr", 3},
+                         {"ord", 2},
+                         {"chr", 1},
+                         {"readBoolean", 0},
+                         {"readIntMaybe", 0},
+                         {"readDoubleMaybe", 0}};
+
 bool scope_init(void) {
   global = malloc(sizeof(scope_t));
   if (global == NULL) {
@@ -78,6 +97,22 @@ bool scope_init(void) {
   }
   global->parent = NULL;
   current = global;
+
+  for (size_t i = 0;
+       i < sizeof(builtin_functions) / sizeof(builtin_functions[0]); i++) {
+    const char *name = builtin_functions[i].name;
+    int param_count = builtin_functions[i].param_count;
+    symbol_t *sym = symbol_new(SYM_FUNC, (char *)name, NULL);
+    if (sym == NULL) {
+      return false;
+    }
+    sym->is_builtin = true;
+    sym->param_count = param_count;
+    sym->state = FUNC_DONE; // no body to analyze
+    if (scope_define(sym) != ERR_OK) {
+      return false;
+    }
+  }
   return true;
 }
 
