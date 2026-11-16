@@ -172,7 +172,35 @@ static void generate_statement(generator_state_t *state, ast_node_t *node) {
     }
     return;
   }
-  // TODO: Implement statement generation based on the node type
+  switch (node->kind) {
+    case AST_BLOCK:
+        generate_block(state, node);
+        break;
+    case AST_VAR_DEF:
+        generate_variable_declaration(state, node);
+        break;
+    case AST_ASSIGN:
+        generate_assignment(state, node);
+        break;
+    case AST_IF:
+        generate_if(state, node);
+        break;
+    case AST_WHILE:
+        generate_while(state, node);
+        break;
+    case AST_RETURN:
+        generate_return(state, node);
+        break;
+    case AST_FOR:
+        generate_for(state, node);
+        break;
+    case AST_MATCH:
+        generate_match(state, node);
+        break;
+    default:
+        state->error = true;
+        break;
+  }
 }
 
 /**
@@ -187,7 +215,26 @@ static void generate_expression(generator_state_t *state, ast_node_t *node) {
     }
     return;
   }
-  // TODO: Implement expression generation based on the node type
+  switch (node->kind){
+    case AST_LITERAL:
+        generate_literal(state, node);
+        break;
+    case AST_ID:
+        generate_variable(state, node);
+        break;
+    case AST_BINARY:
+        generate_binary_expression(state, node);
+        break;
+    case AST_UNARY:
+        generate_unary_expression(state, node);
+        break;
+    case AST_CALL:
+        generate_function_call(state, node);
+        break;
+    default:
+        state->error = true;
+        break;
+  }
 }
 
 /*
@@ -201,7 +248,15 @@ static void generate_expression(generator_state_t *state, ast_node_t *node) {
  * @param state The generator state.
  * @param node The AST node representing the function definition.
  */
-static void generate_function(generator_state_t *state, ast_node_t *node) {}
+static void generate_function(generator_state_t *state, ast_node_t *node) {
+    if(state == NULL || node == NULL || node->kind != AST_FUNC_DEF) {
+        if(state != NULL) {
+            state->error = true;
+        }
+        return;
+    }
+    
+}
 
 /**
  * @brief Generates the parameters of a function from the AST.
