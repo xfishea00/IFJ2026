@@ -1,0 +1,138 @@
+/*
+ * Project: Implementace překladače imperativního jazyka IFJ26
+ * File:    symbol.c
+ * Authors: Michal Řezníček (xreznim00)
+ * Brief:   symbols of the semantic analysis
+ */
+
+#include "symbol.h"
+#include "symtable.h"
+#include <stdlib.h>
+
+#define SYMBOLS_INIT_CAPACITY 16
+
+// global list of all symbols, released only at the end (AST points to them)
+static symbol_t **symbols;
+static int symbol_count;
+static int symbol_capacity;
+
+symbol_t *symbol_new(symbol_kind_t kind, char *name, ast_node_t *decl) {
+  if (symbol_count >= symbol_capacity) {
+    int new_capacity = symbol_capacity * 2;
+    if (new_capacity == 0) {
+      new_capacity = SYMBOLS_INIT_CAPACITY;
+    }
+    symbol_t **new_symbols =
+        realloc(symbols, new_capacity * sizeof(symbol_t *));
+    if (new_symbols == NULL) {
+      return NULL;
+    }
+    symbols = new_symbols;
+    symbol_capacity = new_capacity;
+  }
+  symbol_t *sym = malloc(sizeof(symbol_t));
+  if (sym == NULL) {
+    return NULL;
+  }
+  sym->kind = kind;
+  sym->name = name;
+  sym->type = NULL;
+  sym->unique_name = NULL;
+  sym->decl = decl;
+  sym->is_mutable = false;
+  sym->is_builtin = false;
+  sym->state = FUNC_NOT_DONE;
+  symbols[symbol_count++] = sym;
+  return sym;
+}
+
+void symbols_free_all(void) {
+  for (int i = 0; i < symbol_count; i++) {
+    free(symbols[i]->unique_name);
+    free(symbols[i]);
+  }
+  free(symbols);
+  symbols = NULL;
+  symbol_count = 0;
+  symbol_capacity = 0;
+}
+
+// one scope = one symbol table, linked to the enclosing scope
+typedef struct scope {
+  symtable_t *table;
+  struct scope *parent; // NULL for global scope
+} scope_t;
+
+static scope_t *current; // innermost scope
+static scope_t *global;
+
+bool scope_init(void) {
+  global = malloc(sizeof(scope_t));
+  if (global == NULL) {
+    return false;
+  }
+  global->table = symtable_init();
+  if (global->table == NULL) {
+    free(global);
+    return false;
+  }
+  global->parent = NULL;
+  current = global;
+  return true;
+}
+
+bool scope_push(void) {
+  scope_t *new_scope = malloc(sizeof(scope_t));
+  if (new_scope == NULL) {
+    return false;
+  }
+  new_scope->table = symtable_init();
+  if (new_scope->table == NULL) {
+    free(new_scope);
+    return false;
+  }
+  new_scope->parent = current;
+  current = new_scope;
+  return true;
+}
+
+void scope_pop(void) {
+  if (current != NULL) {
+    scope_t *temp = current;
+    current = current->parent;
+    symtable_free(temp->table);
+    free(temp);
+  }
+}
+
+int scope_define(symbol_t *sym) {
+  if (current == NULL) {
+    return ERR_INTERNAL;
+  }
+  if (symtable_search(current->table, sym->name) != NULL) {
+    return ERR_SEM_REDEF;
+  }
+  if (!symtable_insert(current->table, sym->name, sym)) {
+    return ERR_INTERNAL;
+  }
+  return ERR_OK;
+}
+
+symbol_t *scope_lookup(const char *name) {
+  scope_t *scope = current;
+  while (scope != NULL) {
+    symbol_t *sym = symtable_search(scope->table, name);
+    if (sym != NULL) {
+      return sym;
+    }
+    scope = scope->parent;
+  }
+  return NULL;
+}
+
+void scope_free(void) {
+  while (current != NULL) {
+    scope_pop();
+  }
+  global = NULL;
+}
