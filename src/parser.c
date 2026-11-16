@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ast.h"
 
 // Global / Parser Context
 typedef struct {
@@ -29,9 +30,14 @@ void syntax_error(const char *msg) {
   exit(ERR_SYNTAX);
 }
 
+static void internal_error(void) {
+  fprintf(stderr, "Parser: memory allocation failed\n");
+  exit(ERR_INTERNAL);
+}
+
 // helper functions
 static void advance(void) {
-  // token_free(&parser.current_token);
+  token_free(&parser.current_token);
   int rc = scanner_next(&parser.current_token);
   if (rc != ERR_OK) {
     fprintf(stderr, "Scanner error while parsing (code: %d)\n", rc);
@@ -94,11 +100,36 @@ void match_type() {
   }
 }
 
+static void append_node(ast_list_t *list, ast_node_t *node) {
+  if (node != NULL && !ast_list_append(list, node)) {
+    ast_free(node);
+    internal_error();
+  }
+}
+
+static char *take_string(void) {
+  char *value = parser.current_token.string_val;
+  parser.current_token.string_val = NULL;
+  advance();
+  return value;
+}
+
+/*
+static char *copy_string(const char *value) {
+  size_t len = strlen(value) + 1;
+  char *copy = malloc(len);
+  if (copy == NULL) {
+    internal_error();
+  }
+  memcpy(copy, value, len);
+  return copy;
+}
+*/
 // Forward Declarations of Parsing Functions
-void parse_program(void);
+ast_node_t *parse_program(void);
 void parse_prologue(void);
-void parse_top_level_list(void);
-void parse_func_declaration(void);
+void parse_top_level_list(ast_list_t *defs);
+ast_node_t *parse_func_declaration(bool is_main);
 void parse_entry_function(void);
 void parse_type_definition(void);
 void parse_class(void);
@@ -108,7 +139,7 @@ void parse_statement_list(void);
 void parse_statement_list_tail(void);
 void parse_statement(void);
 void parse_id_stmt_tail(void);
-void parse_block_statement(void);
+ast_node_t * parse_block_statement(void);
 
 void parse_var_definition(void);
 void parse_expect_type(void);
@@ -129,11 +160,11 @@ void parse_multiline_guards(void);
 void parse_gen_source(void);
 void parse_step(void);
 
-void parse_param_groups(void);
-void parse_param_list(void);
-void parse_param_tail(void);
-void parse_param_next(void);
-void parse_param(void);
+void parse_param_groups(ast_list_t **param_lists, int *list_count);
+void parse_param_list(ast_list_t* params);
+//void parse_param_tail(void);
+ast_node_t * parse_param_next(ast_list_t *params);
+ast_node_t * parse_param(void);
 
 void parse_func_call(void);
 void parse_arg_groups(void);
@@ -155,10 +186,16 @@ void parse_separator(void);
 
 // Implementation of Grammar Rules
 
-void parse_program(void) {
+ast_node_t* parse_program(void) {
   parse_prologue();
-  parse_top_level_list();
+
+  ast_node_t *program = ast_new_program(parser.current_token.line);
+  if (program == NULL) {
+    internal_error();
+  }
+  parse_top_level_list(&program->program.defs);
   match(TOK_EOF);
+  return program;
 }
 
 void parse_prologue(void) {
@@ -169,48 +206,61 @@ void parse_prologue(void) {
   match(TOK_NEWLINE);
 }
 
-void parse_top_level_list(void) {
-  switch (peek()) {
-  case TOK_KW_DEF:
-    parse_func_declaration();
-    parse_top_level_list();
-    break;
-  case TOK_AT_MAIN:
-    parse_entry_function();
-    parse_top_level_list();
-    break;
-  case TOK_KW_CASE:
-    parse_class();
-    parse_top_level_list();
-    break;
-  case TOK_KW_TYPE:
-    parse_type_definition();
-    parse_top_level_list();
-    break;
-  case TOK_EOF:
-    // epsilon
-    break;
-  case TOK_NEWLINE:
-    match(TOK_NEWLINE);
-    parse_top_level_list();
-    break;
-  default:
-    syntax_error("Unexpected token in top-level list");
+void parse_top_level_list(ast_list_t *defs) {
+  while (!check(TOK_EOF)){
+    switch (peek()) {
+    case TOK_KW_DEF:
+      append_node(defs, parse_func_declaration(false));
+      break;
+    case TOK_AT_MAIN:
+      advance();
+      append_node(defs, parse_func_declaration(true));
+      break;
+    case TOK_KW_CASE:
+      parse_class();
+      break;
+    case TOK_KW_TYPE:
+      parse_type_definition();
+      break;
+    case TOK_EOF:
+      // epsilon
+      break;
+    case TOK_NEWLINE:
+      match(TOK_NEWLINE);
+      break;
+    default:
+      syntax_error("Unexpected token in top-level list");
+    }
   }
 }
 
-void parse_entry_function(void) {
-  match(TOK_AT_MAIN);
-  parse_func_declaration();
-}
 
-void parse_func_declaration(void) {
+ast_node_t *parse_func_declaration(bool is_main) {
   match(TOK_KW_DEF);
-  match(TOK_ID);
-  parse_param_groups();
+  char* name;
+  if(check(TOK_ID)) name = take_string();
+  ast_list_t *param_lists = NULL;
+  int param_list_count = 0;
+  parse_param_groups(&param_lists, &param_list_count);
+  
   parse_expect_type();
-  match(TOK_ASSIGN);
-  parse_block_statement();
+    match(TOK_ASSIGN);
+  ast_node_t *body = parse_block_statement();
+
+  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, parser.current_token.line);
+  if (function == NULL) {
+    free(name);
+    for (int i = 0; i < param_list_count; i++) {
+      for (int j = 0; j < param_lists[i].count; j++) {
+        ast_free(param_lists[i].items[j]);
+      }
+      free(param_lists[i].items);
+    }
+    free(param_lists);
+    ast_free(body);
+    internal_error();
+  }
+  return function;
 }
 
 void parse_expect_type(void) {
@@ -221,24 +271,33 @@ void parse_expect_type(void) {
   // else epsilon
 }
 
-void parse_param_groups(void) {
+void parse_param_groups(ast_list_t **param_lists, int *list_count) {
   if (check(TOK_LPAR)) {
     match(TOK_LPAR);
-    parse_param_list();
+
+    ast_list_t *params = ast_lists_add(param_lists, list_count);
+    if (params == NULL) {
+      internal_error();
+    }
+    parse_param_list(params);
     match(TOK_RPAR);
-    parse_param_groups();
+    parse_param_groups(param_lists, list_count);
   }
   // else epsilon
 }
 
-void parse_param_list(void) {
+void parse_param_list(ast_list_t *params) {
   if (check(TOK_ID)) {
-    parse_param();
-    parse_param_tail();
+    append_node(params, parse_param());
+    if (check(TOK_COMMA)) {
+      match(TOK_COMMA);
+      append_node(params, parse_param_next(params));
+    }
   }
   // else epsilon
 }
 
+/*
 void parse_param_tail(void) {
   if (check(TOK_COMMA)) {
     match(TOK_COMMA);
@@ -246,26 +305,35 @@ void parse_param_tail(void) {
   }
   // else epsilon
 }
+*/
 
-void parse_param_next(void) {
+ast_node_t *parse_param_next(ast_list_t *params) {
+  ast_node_t *param;
   if (check(TOK_NEWLINE)) {
     match(TOK_NEWLINE);
-    parse_param_list();
+    parse_param_list(params);
   } else if (check(TOK_ID)) {
-    parse_param();
-    parse_param_tail();
+    param = parse_param();
+    if (check(TOK_COMMA)) {
+    match(TOK_COMMA);
+    parse_param_next(params);
+    }
   } else {
     syntax_error("Invalid sequence after comma in parameter list");
   }
+  if(param != NULL) return param;
+  return param;
 }
 
-void parse_param(void) {
-  match(TOK_ID);
+ast_node_t *parse_param(void) {
+  char *name;
+  if(check(TOK_ID)) name = take_string();
   match(TOK_COLON);
   match_type();
+  return ast_new_param(name, NULL, parser.current_token.line);
 }
 
-void parse_block_statement(void) {
+ast_node_t * parse_block_statement(void) {
   if (check(TOK_NEWLINE)) {
     parse_block();
   } else {
@@ -667,7 +735,13 @@ void parse_class(void) {
   match(TOK_KW_CLASS);
   match(TOK_ID);
   match(TOK_LPAR);
-  parse_param_list();
+  ast_list_t *param_lists = NULL;
+  int list_count = 0;
+  ast_list_t *params = ast_lists_add(&param_lists, &list_count);
+  if (params == NULL) {
+    internal_error();
+  }
+  parse_param_list(params);
   match(TOK_RPAR);
 }
 
@@ -691,7 +765,8 @@ int main(void) {
     return rc;
   }
   advance();
-  parse_program();
+  ast_node_t *ast_root = parse_program();
   scanner_free();
+  ast_free(ast_root);
   return ERR_OK;
-}
+} 
