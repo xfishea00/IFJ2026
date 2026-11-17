@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ast.h"
+#define current_line parser.current_token.line
 
 // Global / Parser Context
 typedef struct {
@@ -114,17 +115,6 @@ static char *take_string(void) {
   return value;
 }
 
-/*
-static char *copy_string(const char *value) {
-  size_t len = strlen(value) + 1;
-  char *copy = malloc(len);
-  if (copy == NULL) {
-    internal_error();
-  }
-  memcpy(copy, value, len);
-  return copy;
-}
-*/
 // Forward Declarations of Parsing Functions
 ast_node_t *parse_program(void);
 void parse_prologue(void);
@@ -160,11 +150,8 @@ void parse_multiline_guards(void);
 void parse_gen_source(void);
 void parse_step(void);
 
-void parse_param_groups(ast_list_t **param_lists, int *list_count);
-void parse_param_list(ast_list_t* params);
-//void parse_param_tail(void);
-ast_node_t * parse_param_next(ast_list_t *params);
-ast_node_t * parse_param(void);
+static void parse_param_groups(ast_list_t **param_lists, int *list_count);
+static ast_node_t * parse_param(void);
 
 void parse_func_call(void);
 void parse_arg_groups(void);
@@ -189,7 +176,7 @@ void parse_separator(void);
 ast_node_t* parse_program(void) {
   parse_prologue();
 
-  ast_node_t *program = ast_new_program(parser.current_token.line);
+  ast_node_t *program = ast_new_program(current_line);
   if (program == NULL) {
     internal_error();
   }
@@ -244,10 +231,12 @@ ast_node_t *parse_func_declaration(bool is_main) {
   parse_param_groups(&param_lists, &param_list_count);
   
   parse_expect_type();
-    match(TOK_ASSIGN);
+  match(TOK_ASSIGN);
   ast_node_t *body = parse_block_statement();
 
-  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, parser.current_token.line);
+  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, current_line);
+  
+  //free 
   if (function == NULL) {
     free(name);
     for (int i = 0; i < param_list_count; i++) {
@@ -260,6 +249,7 @@ ast_node_t *parse_func_declaration(bool is_main) {
     ast_free(body);
     internal_error();
   }
+
   return function;
 }
 
@@ -271,66 +261,44 @@ void parse_expect_type(void) {
   // else epsilon
 }
 
-void parse_param_groups(ast_list_t **param_lists, int *list_count) {
-  if (check(TOK_LPAR)) {
+static void parse_param_groups(ast_list_t **param_lists, int *list_count) {
+  while (check(TOK_LPAR)) {
     match(TOK_LPAR);
-
     ast_list_t *params = ast_lists_add(param_lists, list_count);
     if (params == NULL) {
       internal_error();
     }
-    parse_param_list(params);
-    match(TOK_RPAR);
-    parse_param_groups(param_lists, list_count);
-  }
-  // else epsilon
-}
-
-void parse_param_list(ast_list_t *params) {
-  if (check(TOK_ID)) {
-    append_node(params, parse_param());
-    if (check(TOK_COMMA)) {
+    while (!check(TOK_RPAR)) {
+      append_node(params, parse_param());
+      if (!check(TOK_COMMA)) {
+        break;
+      }
       match(TOK_COMMA);
-      append_node(params, parse_param_next(params));
+      if(check(TOK_NEWLINE)){
+        match(TOK_NEWLINE);
+      }else if(check(TOK_RPAR)){
+        syntax_error("No newline between trailing comma and RPAR");
+      }
+      
     }
+    match(TOK_RPAR);
   }
-  // else epsilon
 }
 
-/*
-void parse_param_tail(void) {
-  if (check(TOK_COMMA)) {
-    match(TOK_COMMA);
-    parse_param_next();
+static ast_node_t *parse_param(void) {
+  if (!check(TOK_ID)) {
+    syntax_error("Expected parameter name");
   }
-  // else epsilon
-}
-*/
-
-ast_node_t *parse_param_next(ast_list_t *params) {
-  ast_node_t *param;
-  if (check(TOK_NEWLINE)) {
-    match(TOK_NEWLINE);
-    parse_param_list(params);
-  } else if (check(TOK_ID)) {
-    param = parse_param();
-    if (check(TOK_COMMA)) {
-    match(TOK_COMMA);
-    parse_param_next(params);
-    }
-  } else {
-    syntax_error("Invalid sequence after comma in parameter list");
-  }
-  if(param != NULL) return param;
-  return param;
-}
-
-ast_node_t *parse_param(void) {
-  char *name;
-  if(check(TOK_ID)) name = take_string();
+  int line = parser.current_token.line;
+  char *name = take_string();
   match(TOK_COLON);
   match_type();
-  return ast_new_param(name, NULL, parser.current_token.line);
+  ast_node_t *param = ast_new_param(name, NULL, line);
+  if (param == NULL) {
+    free(name);
+    internal_error();
+  }
+  return param;
 }
 
 ast_node_t * parse_block_statement(void) {
@@ -339,6 +307,7 @@ ast_node_t * parse_block_statement(void) {
   } else {
     parse_statement();
   }
+  return;
 }
 
 void parse_block(void) {
@@ -609,8 +578,14 @@ void parse_expression(void) {
             (check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) ||
             check(TOK_KW_MATCH)) &&
            !(check(TOK_RPAR) && lpar_cnt == 0)) {
-      if (parser.current_token.type == TOK_NEWLINE) {
+      if (parser.current_token.type == TOK_NEWLINE && lpar_cnt == 0) {
         break;
+      } else if (parser.current_token.type == TOK_NEWLINE && lpar_cnt != 0) {
+        advance();
+        if(parser.current_token.type != TOK_RPAR) {
+          syntax_error("Provisional expression parser reject expression");
+        }
+        continue;
       } else if (check(TOK_RPAR)) {
         lpar_cnt -= 1;
       } else if (check(TOK_LPAR)) {
@@ -735,13 +710,22 @@ void parse_class(void) {
   match(TOK_KW_CLASS);
   match(TOK_ID);
   match(TOK_LPAR);
-  ast_list_t *param_lists = NULL;
-  int list_count = 0;
-  ast_list_t *params = ast_lists_add(&param_lists, &list_count);
-  if (params == NULL) {
-    internal_error();
+  ast_list_t attrs = {0};
+  while(!check(TOK_RPAR)){
+    append_node(&attrs, parse_param());
+    if (!check(TOK_COMMA)){
+      break;
+    }
+    match(TOK_COMMA);
+    if(!check(TOK_NEWLINE) && !check(TOK_ID)){
+      syntax_error("Unexpected token in class attributes");
+    }
+    if(check(TOK_NEWLINE)){
+      match(TOK_NEWLINE);
+      break;
+    }
   }
-  parse_param_list(params);
+  
   match(TOK_RPAR);
 }
 
