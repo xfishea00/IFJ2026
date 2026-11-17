@@ -5,12 +5,13 @@
  * Brief:   Stack implementation
  */
 
+#include "expression_parser.h"
 #include "stack.h"
 #include "error.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-void stack_error(char *message) {
+void stack_error(const char *message) {
     fprintf(stderr, "%s", message);
     exit(ERR_INTERNAL);
 }

@@ -6,10 +6,9 @@
  */
 
 #include "expression_parser.h"
-#include "token.h"
 #include "stack.h"
 #include "error.h"
-#include <stdbool.h>
+#include "token.h"
 
 precedence_terminal_t map_token_to_precedence(token_t t) {
     switch (t.type) {
@@ -17,6 +16,8 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
         case TOK_INT_LIT:    return PRE_ID;
         case TOK_DOUBLE_LIT: return PRE_ID;
         case TOK_STRING_LIT: return PRE_ID;
+        case TOK_KW_TRUE:    return PRE_ID;
+        case TOK_KW_FALSE:   return PRE_ID;
         case TOK_PLUS:       return PRE_PLUS;
         case TOK_MINUS:      return PRE_MINUS;
         case TOK_CONCAT:     return PRE_CONCAT;
@@ -106,44 +107,50 @@ bool is_boundary(token_type_t t) {
     }
 }
 
-bool is_not_expression_end(stack_t s) {
+bool is_not_expression_end(stack_t s, token_type_t current_token_type) {
     if (s.elements[s.top - 1].type == STACK_TERMINAL && 
         s.elements[s.top - 1].terminal == PRE_END &&
         s.elements[s.top].type == STACK_EXPRESSION && 
-        is_boundary(current_token)) {
+        is_boundary(current_token_type)) {
         return false;
     }
     return true;
 }
 
-void parse_expression() {
+int parse_non_id_expression(token_t *current_token, advance_token_f advance_token) {
     stack_t stack;
     stack_init(&stack);
     stack_push(&stack, end_marker);
+    int rc;
 
-    while (is_not_expression_end(stack)) {
+    while (is_not_expression_end(stack, current_token->type)) {
         int top_terminal_pos = stack_top_element_type_pos(&stack, STACK_TERMINAL);
         if (top_terminal_pos == -1) {
-            // error
-            return;
+            return ERR_INTERNAL;
         }
 
         stack_element_t topmost_terminal = stack.elements[top_terminal_pos];
-        stack_element_t input_terminal = { .type = STACK_TERMINAL, .terminal = map_token_to_precedence(current_token) };
+        stack_element_t input_terminal = { .type = STACK_TERMINAL, .terminal = map_token_to_precedence(*current_token) };
+        if (input_terminal.terminal == PRE_INVALID) {
+            return ERR_SYNTAX;
+        }
         precedence_t precedence = table[topmost_terminal.terminal][input_terminal.terminal];
 
         switch (precedence) {
             case PRE_LOWER:
                 stack_insert(&stack, less_marker, top_terminal_pos + 1);
                 stack_push(&stack, input_terminal);
-                // get_token;
+                rc = advance_token(current_token);
+                if (rc != ERR_OK) {
+                    return rc;
+                }
                 break;
+
             case PRE_HIGHER: {
                 rule_t rule = { .n = -1 };
                 int top_marker_pos = stack_top_element_type_pos(&stack, STACK_MARKER);
                 if (top_marker_pos == -1) {
-                    // error
-                    return;
+                    return ERR_SYNTAX;
                 }
                 int expression_len = stack.top - top_marker_pos;
                 switch (expression_len) {
@@ -244,7 +251,7 @@ void parse_expression() {
                             rule = rules[15];
                         }
                         else {
-                            // error
+                            return ERR_SYNTAX;
                         }
                         break;
                     }
@@ -259,7 +266,7 @@ void parse_expression() {
                             rule = rules[11];
                         }
                         else {
-                            // error
+                            return ERR_SYNTAX;
                         }
                         break;
                     }
@@ -272,32 +279,33 @@ void parse_expression() {
                             rule = rules[16];
                         }
                         else {
-                            // error
+                            return ERR_SYNTAX;
                         }
                         break;
                     }
 
                     default:
-                        // error
-                        break;
+                        return ERR_SYNTAX;
                 }
-
-                if (rule.n == -1) {
-                    // error
-                }
-
                 stack.elements[top_marker_pos] = rule.left_side;
                 stack.top = top_marker_pos;
-
                 break;
             }
+
             case PRE_EQUAL:
                 stack_push(&stack, input_terminal);
-                // get_token;
+                rc = advance_token(current_token);
+                if (rc != ERR_OK) {
+                    return rc;
+                }
                 break;
+
             case PRE_ERROR:
-                // error
-                break;
+                return ERR_SYNTAX;
+
+            default:
+                return ERR_INTERNAL;
         }
     }
+    return ERR_OK;
 }
