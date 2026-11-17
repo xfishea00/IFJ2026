@@ -43,7 +43,7 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
         case TOK_EOF:        return PRE_END;
         default:             return PRE_INVALID;
     }
-};
+}
 
 const precedence_t table[TERMINATOR_NUM][TERMINATOR_NUM] = {
 //          id  +  - ++  *  /  <  > <= >= == !=  ! && ||  .  (  )  $

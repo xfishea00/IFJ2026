@@ -124,17 +124,16 @@ void parse_entry_function(void);
 static ast_node_t * parse_type_definition(void);
 static ast_node_t * parse_class(void);
 
-void parse_block(void);
+static ast_node_t *parse_block(void);
 void parse_statement_list(void);
 void parse_statement_list_tail(void);
-void parse_statement(void);
+static ast_node_t *parse_statement(void);
 void parse_id_stmt_tail(void);
 ast_node_t * parse_block_statement(void);
 
-void parse_var_definition(void);
+static ast_node_t *parse_var_definition(void);
 void parse_expect_type(void);
-void parse_return_statement(void);
-void parse_return_tail(void);
+static ast_node_t *parse_return_statement(void);
 
 void parse_if_statement(void);
 void parse_else_tail(void);
@@ -159,8 +158,8 @@ void parse_arg_list(void);
 void parse_arg_tail(void);
 void parse_arg_next(void);
 
-void parse_expression(void);
-void parse_non_id_expression(void);
+ast_node_t* parse_expression(void);
+//void parse_non_id_expression(void);
 void parse_expr_match_tail(void);
 void parse_list_def(void);
 void parse_list_elements(void);
@@ -174,9 +173,10 @@ void parse_separator(void);
 // Implementation of Grammar Rules
 
 ast_node_t* parse_program(void) {
+  int line = current_line;
   parse_prologue();
 
-  ast_node_t *program = ast_new_program(current_line);
+  ast_node_t *program = ast_new_program(line);
   if (program == NULL) {
     internal_error();
   }
@@ -224,6 +224,7 @@ void parse_top_level_list(ast_list_t *defs) {
 
 ast_node_t *parse_func_declaration(bool is_main) {
   match(TOK_KW_DEF);
+  int line = current_line;
   char* name;
   if(check(TOK_ID)) name = take_string();
   ast_list_t *param_lists = NULL;
@@ -234,7 +235,7 @@ ast_node_t *parse_func_declaration(bool is_main) {
   match(TOK_ASSIGN);
   ast_node_t *body = parse_block_statement();
 
-  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, current_line);
+  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, line);
   
   //free 
   if (function == NULL) {
@@ -303,16 +304,18 @@ static ast_node_t *parse_param(void) {
 
 ast_node_t * parse_block_statement(void) {
   if (check(TOK_NEWLINE)) {
-    parse_block();
+    return parse_block();
   } else {
     parse_statement();
   }
   return;
 }
 
-void parse_block(void) {
+static ast_node_t *parse_block(void) {
+  int line = current_line;
   match(TOK_NEWLINE);
   match(TOK_INDENT);
+
   parse_statement_list();
   while (!check(TOK_DEDENT)) // unsure
     parse_statement_list();
@@ -348,7 +351,7 @@ void parse_separator(void) {
   }
 }
 
-void parse_statement(void) {
+static ast_node_t *parse_statement(void) {
   switch (peek()) {
   case TOK_ID:
     match(TOK_ID);
@@ -356,8 +359,7 @@ void parse_statement(void) {
     break;
   case TOK_KW_VAL:
   case TOK_KW_VAR:
-    parse_var_definition();
-    break;
+    return parse_var_definition();
   case TOK_KW_IF:
     parse_if_statement();
     break;
@@ -368,11 +370,9 @@ void parse_statement(void) {
     parse_for_loop();
     break;
   case TOK_KW_RETURN:
-    parse_return_statement();
-    break;
+    return parse_return_statement();
   default:
-    parse_non_id_expression();
-    break;
+    return parse_expression();
   }
 }
 
@@ -396,29 +396,42 @@ void parse_id_stmt_tail(void) {
   }
 }
 
-void parse_var_definition(void) {
-  if (check(TOK_KW_VAL)) {
-    match(TOK_KW_VAL);
-  } else {
-    match(TOK_KW_VAR);
+static ast_node_t *parse_var_definition(void) {
+  bool mutable = check(TOK_KW_VAR);
+  int line = current_line;
+  advance();
+  if (!check(TOK_ID)) {
+    syntax_error("Expected variable name");
   }
-  match(TOK_ID);
+  char *name = take_string();
   parse_expect_type();
   match(TOK_ASSIGN);
-  parse_expression();
-}
+  ast_node_t *init = parse_expression();
+  ast_node_t *var = ast_new_var_def(mutable, name, NULL, NULL, line);
 
-void parse_return_statement(void) {
-  match(TOK_KW_RETURN);
-  parse_return_tail();
-}
-
-void parse_return_tail(void) {
-  if (check(TOK_NEWLINE) || check(TOK_SEMICOLON) || check(TOK_DEDENT) ||
-      check(TOK_EOF)) {
-    return; // epsilon
+  if (var == NULL) {
+    free(name);
+    ast_free(init);
+    internal_error();
   }
-  parse_expression();
+
+  return var;
+}
+
+static ast_node_t *parse_return_statement(void) {
+  int line = current_line;
+  match(TOK_KW_RETURN);
+  ast_node_t *value = NULL;
+  if (!check(TOK_NEWLINE) && !check(TOK_SEMICOLON) && !check(TOK_DEDENT) &&
+      !check(TOK_EOF)) {
+    value = parse_expression();
+  }
+  ast_node_t *ret = ast_new_return(value, line);
+  if (ret == NULL) {
+    ast_free(value);
+    internal_error();
+  }
+  return ret;
 }
 
 void parse_if_statement(void) {
@@ -568,7 +581,7 @@ void parse_arg_next(void) {
   }
 }
 
-void parse_expression(void) {
+ast_node_t *parse_expression(void) {
   if (check(TOK_KW_LIST)) {
     parse_list_def();
   } else {
@@ -602,7 +615,7 @@ void parse_expression(void) {
   }
 }
 
-void parse_non_id_expression(void) {
+//void parse_non_id_expression(void) {
   /*
   if (check(TOK_KW_LIST)) {
     parse_list_def();
@@ -613,8 +626,8 @@ void parse_non_id_expression(void) {
     //advance();
   }
   */
-  parse_expression();
-}
+ // parse_expression();
+//}
 
 void parse_expr_match_tail(void) {
   if (check(TOK_KW_MATCH)) {
@@ -706,6 +719,7 @@ void parse_model(void) {
 }
 
 ast_node_t *parse_class(void) {
+  int line = current_line;
   match(TOK_KW_CASE);
   match(TOK_KW_CLASS);
   if (!check(TOK_ID)) {
@@ -729,7 +743,7 @@ ast_node_t *parse_class(void) {
     }
   }
   match(TOK_RPAR);
-  ast_node_t *class_node = ast_new_case_class(name, attrs, current_line);
+  ast_node_t *class_node = ast_new_case_class(name, attrs, line);
 
   //Free if error
   if (class_node == NULL) {
@@ -744,6 +758,7 @@ ast_node_t *parse_class(void) {
 }
 
 static ast_node_t * parse_type_definition(void) {
+  int line = current_line;
   match(TOK_KW_TYPE);
   if (!check(TOK_ID)) {
     syntax_error("Expected type alias name");
@@ -757,7 +772,7 @@ static ast_node_t * parse_type_definition(void) {
   }
   while (check(TOK_NEWLINE))
     match(TOK_NEWLINE);
-  ast_node_t *type_node = ast_new_type_alias(name, NULL, current_line);
+  ast_node_t *type_node = ast_new_type_alias(name, NULL, line);
   return type_node;
 }
 
