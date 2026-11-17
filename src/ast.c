@@ -106,6 +106,7 @@ ast_node_t *ast_new_return(ast_node_t *value, int line) {
 ast_node_t *ast_new_int(int64_t value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = LIT_INT;
     node->literal.int_val = value;
     // TODO: node->type = Int base type
   }
@@ -115,6 +116,7 @@ ast_node_t *ast_new_int(int64_t value, int line) {
 ast_node_t *ast_new_double(double value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = LIT_DOUBLE;
     node->literal.double_val = value;
     // TODO: node->type = Double base type
   }
@@ -124,6 +126,7 @@ ast_node_t *ast_new_double(double value, int line) {
 ast_node_t *ast_new_string(char *value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = LIT_STRING;
     node->literal.string_val = value;
     // TODO: node->type = String base type
   }
@@ -133,6 +136,7 @@ ast_node_t *ast_new_string(char *value, int line) {
 ast_node_t *ast_new_bool(bool value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = LIT_BOOL;
     node->literal.bool_val = value;
     // TODO: node->type = Boolean base type
   }
@@ -142,6 +146,7 @@ ast_node_t *ast_new_bool(bool value, int line) {
 ast_node_t *ast_new_unit(int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
+    node->literal.kind = LIT_UNIT;
     // TODO: node->type = Unit base type
   }
   return node;
@@ -345,6 +350,7 @@ static void list_free(ast_list_t *list) {
   free(list->items);
 }
 
+// types and symbols are not freed here
 void ast_free(ast_node_t *node) {
   if (node == NULL) {
     return;

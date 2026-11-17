@@ -60,6 +60,15 @@ typedef enum {
   OP_CONCAT,
 } ast_op_t;
 
+// kinds of literal
+typedef enum {
+  LIT_INT,
+  LIT_DOUBLE,
+  LIT_STRING,
+  LIT_BOOL,
+  LIT_UNIT,
+} ast_literal_kind_t;
+
 // forward declarations, type and symbol are defined in other modules
 typedef struct ast_node ast_node_t;
 typedef struct type type_t;
@@ -132,8 +141,9 @@ struct ast_node {
       ast_node_t *value; // NULL for bare return
     } return_stmt;
 
-    // valid field is given by node->type
+    // valid field is given by kind
     struct {
+      ast_literal_kind_t kind;
       int64_t int_val;
       double double_val;
       char *string_val;
