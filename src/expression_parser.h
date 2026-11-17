@@ -9,7 +9,6 @@
 #define EXPRESSION_PARSER_H
 
 #include "token.h"
-#include "stack.h"
 
 typedef enum {
     PRE_ID,     // id
@@ -41,11 +40,22 @@ typedef enum {
 } precedence_terminal_t;
 
 typedef enum {
+    STACK_TERMINAL,
+    STACK_MARKER,
+    STACK_EXPRESSION
+} stack_element_type_t;
+
+typedef enum {
     PRE_LOWER =  '<',
     PRE_HIGHER = '>',
     PRE_EQUAL =  '=',
     PRE_ERROR =  ' ',
 } precedence_t;
+
+typedef struct {
+    stack_element_type_t type;
+    precedence_terminal_t terminal;
+} stack_element_t;
 
 typedef struct {
     int n;
@@ -62,6 +72,8 @@ typedef struct {
 #define TERMINATOR_NUM 19 // number of rows and columns in the table
 #define RULE_NUM 17       // number of rules
 
-precedence_terminal_t map_token_to_precedence(token_t);
+precedence_terminal_t map_token_to_precedence(token_t); // maps tokens to precedence terminals
+bool is_boundary(token_type_t t);                       // returns true for tokens that are not a part of an expression
+void parse_expression();
 
 #endif

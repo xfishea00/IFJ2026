@@ -6,12 +6,14 @@
  */
 
 #include "stack.h"
-#include "token.h"
-#include "scanner.h"
+#include "error.h"
 #include <stdio.h>
-#include <stdbool.h>
+#include <stdlib.h>
 
-#define stack_error(const char *message);
+void stack_error(char *message) {
+    fprintf(stderr, "%s", message);
+    exit(ERR_INTERNAL);
+}
 
 void stack_init(stack_t *s) {
     s->top = -1;
@@ -28,7 +30,6 @@ bool is_full(stack_t *s) {
 void stack_push(stack_t *s, stack_element_t t) {
     if (is_full(s)) {
         stack_error("Stack overflow\n");
-        return;
     }
     s->elements[++s->top] = t;
 }
@@ -36,7 +37,6 @@ void stack_push(stack_t *s, stack_element_t t) {
 stack_element_t stack_pop(stack_t *s) {
     if (is_empty(s)) {
         stack_error("Stack underflow\n");
-        return -1;
     }
     return s->elements[s->top--];
 }
@@ -44,7 +44,6 @@ stack_element_t stack_pop(stack_t *s) {
 stack_element_t stack_peek(stack_t *s) {
     if (is_empty(s)) {
         stack_error("Empty stack\n");
-        return -1;
     }
     return s->elements[s->top];
 }
@@ -52,18 +51,16 @@ stack_element_t stack_peek(stack_t *s) {
 int stack_top_element_type_pos(stack_t *s, stack_element_type_t type) {
     if (is_empty(s)) {
         stack_error("Empty stack\n");
-        return -1;
     }
     for (int i = s->top; i >= 0; i--) {
-        if (s->elements[i].type == type) { return i }
+        if (s->elements[i].type == type) { return i; }
     }
     return -1;
 }
 
 void stack_insert(stack_t *s, stack_element_t t, int pos) {
     if (pos < 0 || is_full(s) || pos > s->top + 1) {
-        stack_error("Stack overflox\n")
-        return;
+        stack_error("Stack overflox\n");
     }
     for (int i = ++s->top; i > pos; i--) {
         s->elements[i] = s->elements[i - 1];

@@ -8,6 +8,7 @@
 #include "expression_parser.h"
 #include "token.h"
 #include "stack.h"
+#include "error.h"
 #include <stdbool.h>
 
 precedence_terminal_t map_token_to_precedence(token_t t) {
@@ -16,8 +17,6 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
         case TOK_INT_LIT:    return PRE_ID;
         case TOK_DOUBLE_LIT: return PRE_ID;
         case TOK_STRING_LIT: return PRE_ID;
-        case TOK_KW_TRUE:    return PRE_ID;
-        case TOK_KW_FALSE:   return PRE_ID;
         case TOK_PLUS:       return PRE_PLUS;
         case TOK_MINUS:      return PRE_MINUS;
         case TOK_CONCAT:     return PRE_CONCAT;
@@ -36,6 +35,10 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
         case TOK_LPAR:       return PRE_LPAR;
         case TOK_RPAR:       return PRE_RPAR;
         case TOK_NEWLINE:    return PRE_END;
+        case TOK_DEDENT:     return PRE_END;
+        case TOK_COMMA:      return PRE_END;
+        case TOK_COLON:      return PRE_END;
+        case TOK_SEMICOLON:  return PRE_END;
         case TOK_EOF:        return PRE_END;
         default:             return PRE_INVALID;
     }
@@ -64,9 +67,9 @@ const precedence_t table[TERMINATOR_NUM][TERMINATOR_NUM] = {
 /* $  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, X, X}
 };
 
-stack_element_t end_marker = { .type = STACK_TERMINAL, .terminal = PRE_END };
-stack_element_t less_marker = { .type = STACK_MARKER };
-stack_element_t expression = { .type = STACK_EXPRESSION };
+const stack_element_t end_marker = { .type = STACK_TERMINAL, .terminal = PRE_END };
+const stack_element_t less_marker = { .type = STACK_MARKER };
+const stack_element_t expression = { .type = STACK_EXPRESSION };
 
 const rule_t rules[RULE_NUM] = {
     { .n = 1,  .left_side = expression, .right_side = "E + E"  },
@@ -88,10 +91,6 @@ const rule_t rules[RULE_NUM] = {
     { .n = 17, .left_side = expression, .right_side = "id"     }
 };
 
-stack_t stack;
-stack_init(&stack);
-stack_push(&stack, end_marker);
-
 bool is_boundary(token_type_t t) {
     switch (t) {
         case TOK_NEWLINE:
@@ -107,8 +106,22 @@ bool is_boundary(token_type_t t) {
     }
 }
 
-void parse_expression {
-    while (true) {
+bool is_not_expression_end(stack_t s) {
+    if (s.elements[s.top - 1].type == STACK_TERMINAL && 
+        s.elements[s.top - 1].terminal == PRE_END &&
+        s.elements[s.top].type == STACK_EXPRESSION && 
+        is_boundary(current_token)) {
+        return false;
+    }
+    return true;
+}
+
+void parse_expression() {
+    stack_t stack;
+    stack_init(&stack);
+    stack_push(&stack, end_marker);
+
+    while (is_not_expression_end(stack)) {
         int top_terminal_pos = stack_top_element_type_pos(&stack, STACK_TERMINAL);
         if (top_terminal_pos == -1) {
             // error
@@ -276,12 +289,9 @@ void parse_expression {
                 stack.elements[top_marker_pos] = rule.left_side;
                 stack.top = top_marker_pos;
 
-                printf("%d", rule.n);
-
                 break;
             }
             case PRE_EQUAL:
-                // push(token)
                 stack_push(&stack, input_terminal);
                 // get_token;
                 break;
@@ -290,6 +300,4 @@ void parse_expression {
                 break;
         }
     }
-
-    // if (stack = $E && is_boundary(input_terminal)) return success;
 }

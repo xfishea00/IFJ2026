@@ -8,29 +8,16 @@
 #ifndef STACK_H
 #define STACK_H
 
-#include "token.h"
 #include "expression_parser.h"
-#include <stdio.h>
-#include <stdbool.h>
 
-#define MAX_SIZE 100
-
-typedef enum {
-    STACK_TERMINAL,
-    STACK_MARKER,
-    STACK_EXPRESSION
-} stack_element_type_t;
-
-typedef struct {
-    stack_element_type_t type;
-    precedence_terminal_t terminal;
-} stack_element_t;
+#define MAX_SIZE 200
 
 typedef struct {
     stack_element_t elements[MAX_SIZE];
     int top;
 } stack_t;
 
+void stack_error(const char *message);                                 // helper error function
 void stack_init(stack_t *s);                                           // initializes stack
 bool is_empty(stack_t *s);                                             // checks if stack is empty
 bool is_full(stack_t *s);                                              // checks if stack is full
