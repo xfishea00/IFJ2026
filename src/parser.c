@@ -121,8 +121,8 @@ void parse_prologue(void);
 void parse_top_level_list(ast_list_t *defs);
 ast_node_t *parse_func_declaration(bool is_main);
 void parse_entry_function(void);
-void parse_type_definition(void);
-void parse_class(void);
+static ast_node_t * parse_type_definition(void);
+static ast_node_t * parse_class(void);
 
 void parse_block(void);
 void parse_statement_list(void);
@@ -204,10 +204,10 @@ void parse_top_level_list(ast_list_t *defs) {
       append_node(defs, parse_func_declaration(true));
       break;
     case TOK_KW_CASE:
-      parse_class();
+      append_node(defs, parse_class());
       break;
     case TOK_KW_TYPE:
-      parse_type_definition();
+      append_node(defs, parse_type_definition());
       break;
     case TOK_EOF:
       // epsilon
@@ -705,10 +705,13 @@ void parse_model(void) {
   }
 }
 
-void parse_class(void) {
+ast_node_t *parse_class(void) {
   match(TOK_KW_CASE);
   match(TOK_KW_CLASS);
-  match(TOK_ID);
+  if (!check(TOK_ID)) {
+    syntax_error("Expected case class name");
+  }
+  char *name = take_string();
   match(TOK_LPAR);
   ast_list_t attrs = {0};
   while(!check(TOK_RPAR)){
@@ -725,13 +728,27 @@ void parse_class(void) {
       break;
     }
   }
-  
   match(TOK_RPAR);
+  ast_node_t *class_node = ast_new_case_class(name, attrs, current_line);
+
+  //Free if error
+  if (class_node == NULL) {
+    free(name);
+    for (int i = 0; i < attrs.count; i++) {
+      ast_free(attrs.items[i]);
+    }
+    free(attrs.items);
+    internal_error();
+  }
+  return class_node;
 }
 
-void parse_type_definition(void) {
+static ast_node_t * parse_type_definition(void) {
   match(TOK_KW_TYPE);
-  match(TOK_ID);
+  if (!check(TOK_ID)) {
+    syntax_error("Expected type alias name");
+  }
+  char *name = take_string();
   match(TOK_ASSIGN);
   match_type();
   while (!check(TOK_NEWLINE)) {
@@ -740,6 +757,8 @@ void parse_type_definition(void) {
   }
   while (check(TOK_NEWLINE))
     match(TOK_NEWLINE);
+  ast_node_t *type_node = ast_new_type_alias(name, NULL, current_line);
+  return type_node;
 }
 
 int main(void) {
