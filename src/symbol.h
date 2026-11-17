@@ -39,6 +39,9 @@ struct symbol {
   int param_count;    // builtin SYM_FUNC only
 };
 
+// scope of names, defined in symbol.c
+typedef struct scope scope_t;
+
 // adds new symbol to the global list, name is not copied
 symbol_t *symbol_new(symbol_kind_t kind, char *name, ast_node_t *decl);
 
@@ -62,5 +65,11 @@ symbol_t *scope_lookup(const char *name);
 
 // releases all scopes, not symbols
 void scope_free(void);
+
+// switches to the global scope, returns the previous one
+scope_t *scope_enter_global(void);
+
+// returns to the scope saved by scope_enter_global
+void scope_restore(scope_t *saved);
 
 #endif // SYMBOL_H

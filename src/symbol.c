@@ -59,10 +59,10 @@ void symbols_free_all(void) {
 }
 
 // one scope = one symbol table, linked to the enclosing scope
-typedef struct scope {
+struct scope {
   symtable_t *table;
   struct scope *parent; // NULL for global scope
-} scope_t;
+};
 
 static scope_t *current; // innermost scope
 static scope_t *global;
@@ -171,3 +171,11 @@ void scope_free(void) {
   }
   global = NULL;
 }
+
+scope_t *scope_enter_global(void) {
+  scope_t *saved = current;
+  current = global;
+  return saved;
+}
+
+void scope_restore(scope_t *saved) { current = saved; }
