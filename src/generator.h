@@ -8,8 +8,7 @@
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
-// TODO: include AST tree from parser
-// #include ""
+#include "ast.h"
 
 /**
  * @brief Generates code from the AST tree.
