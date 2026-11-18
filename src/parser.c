@@ -125,8 +125,8 @@ static ast_node_t * parse_type_definition(void);
 static ast_node_t * parse_class(void);
 
 static ast_node_t *parse_block(void);
-void parse_statement_list(void);
-void parse_statement_list_tail(void);
+void parse_statement_list(ast_node_t *block);
+void parse_statement_list_tail(ast_node_t *block);
 static ast_node_t *parse_statement(void);
 void parse_id_stmt_tail(void);
 ast_node_t * parse_block_statement(void);
@@ -235,7 +235,7 @@ ast_node_t *parse_func_declaration(bool is_main) {
   match(TOK_ASSIGN);
   ast_node_t *body = parse_block_statement();
 
-  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, NULL, line);
+  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, body, line);
   
   //free 
   if (function == NULL) {
@@ -306,9 +306,8 @@ ast_node_t * parse_block_statement(void) {
   if (check(TOK_NEWLINE)) {
     return parse_block();
   } else {
-    parse_statement();
+    return parse_statement();
   }
-  return;
 }
 
 static ast_node_t *parse_block(void) {
@@ -316,25 +315,35 @@ static ast_node_t *parse_block(void) {
   match(TOK_NEWLINE);
   match(TOK_INDENT);
 
-  parse_statement_list();
-  while (!check(TOK_DEDENT)) // unsure
-    parse_statement_list();
+  ast_node_t *block = ast_new_block(line);
+  if (block == NULL) {
+    internal_error();
+  }
+
+  while (!check(TOK_DEDENT)){ // unsure
+    if (check(TOK_EOF)) {
+      ast_free(block);
+      syntax_error("Unterminated block");
+    }
+    parse_statement_list(block);
+  }
   match(TOK_DEDENT);
+  return block;
 }
 
-void parse_statement_list(void) {
-  parse_statement();
-  parse_statement_list_tail();
+void parse_statement_list(ast_node_t *block) {
+  append_node(&block->block.stmts, parse_statement());
+  parse_statement_list_tail(block);
 }
 
-void parse_statement_list_tail(void) {
+void parse_statement_list_tail(ast_node_t *block) {
   if (check(TOK_NEWLINE) || check(TOK_SEMICOLON)) {
     parse_separator();
     if (check(TOK_DEDENT)) {
       // End of block reached after separator
       return;
     }
-    parse_statement_list();
+    parse_statement_list(block);
   }
   // else epsilon (e.g. directly before DEDENT)
 }
@@ -374,6 +383,7 @@ static ast_node_t *parse_statement(void) {
   default:
     return parse_expression();
   }
+  return NULL;
 }
 
 void parse_id_stmt_tail(void) {
@@ -613,6 +623,9 @@ ast_node_t *parse_expression(void) {
     // parse_non_id_expression();
     // parse_expr_match_tail();
   }
+  char* test = (char*)malloc(5*sizeof(char));
+  strcpy(test, "test");
+  return ast_new_id(test, 42); //temporary return for testing
 }
 
 //void parse_non_id_expression(void) {
