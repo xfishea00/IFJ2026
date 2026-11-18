@@ -6,6 +6,8 @@
  */
 
 #include "ast.h"
+#include "type.h"
+
 #include <stdlib.h>
 
 #define LIST_INIT_CAPACITY 4
@@ -108,7 +110,7 @@ ast_node_t *ast_new_int(int64_t value, int line) {
   if (node != NULL) {
     node->literal.kind = LIT_INT;
     node->literal.int_val = value;
-    // TODO: node->type = Int base type
+    node->type = type_int();
   }
   return node;
 }
@@ -118,7 +120,7 @@ ast_node_t *ast_new_double(double value, int line) {
   if (node != NULL) {
     node->literal.kind = LIT_DOUBLE;
     node->literal.double_val = value;
-    // TODO: node->type = Double base type
+    node->type = type_double();
   }
   return node;
 }
@@ -128,7 +130,7 @@ ast_node_t *ast_new_string(char *value, int line) {
   if (node != NULL) {
     node->literal.kind = LIT_STRING;
     node->literal.string_val = value;
-    // TODO: node->type = String base type
+    node->type = type_string();
   }
   return node;
 }
@@ -138,7 +140,7 @@ ast_node_t *ast_new_bool(bool value, int line) {
   if (node != NULL) {
     node->literal.kind = LIT_BOOL;
     node->literal.bool_val = value;
-    // TODO: node->type = Boolean base type
+    node->type = type_bool();
   }
   return node;
 }
@@ -147,7 +149,7 @@ ast_node_t *ast_new_unit(int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
     node->literal.kind = LIT_UNIT;
-    // TODO: node->type = Unit base type
+    node->type = type_unit();
   }
   return node;
 }
