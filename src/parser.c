@@ -135,8 +135,8 @@ static ast_node_t *parse_var_definition(void);
 void parse_expect_type(void);
 static ast_node_t *parse_return_statement(void);
 
-void parse_if_statement(void);
-void parse_else_tail(void);
+static ast_node_t * parse_if_statement(void);
+static ast_node_t * parse_else_tail(void);
 void parse_else_continuation(void);
 
 void parse_while_statement(void);
@@ -370,8 +370,7 @@ static ast_node_t *parse_statement(void) {
   case TOK_KW_VAR:
     return parse_var_definition();
   case TOK_KW_IF:
-    parse_if_statement();
-    break;
+    return parse_if_statement();
   case TOK_KW_WHILE:
     parse_while_statement();
     break;
@@ -383,7 +382,7 @@ static ast_node_t *parse_statement(void) {
   default:
     return parse_expression();
   }
-  return NULL;
+  return NULL; //temp
 }
 
 void parse_id_stmt_tail(void) {
@@ -444,32 +443,36 @@ static ast_node_t *parse_return_statement(void) {
   return ret;
 }
 
-void parse_if_statement(void) {
+static ast_node_t *parse_if_statement(void) {
+  int line = current_line;
   match(TOK_KW_IF);
-  parse_expression();
+  ast_node_t *condition = parse_expression();
   match(TOK_KW_THEN);
-  parse_block_statement();
-  parse_else_tail();
-}
-
-void parse_else_tail(void) {
-  if (check(TOK_KW_ELSE)) {
+  ast_node_t * then_branch = parse_block_statement();
+  ast_node_t * else_branch = NULL;
+  while (check(TOK_KW_ELSE)){
     match(TOK_KW_ELSE);
-    parse_else_continuation();
+    else_branch = parse_else_tail();
   }
-  // else epsilon
+
+  ast_node_t *node = ast_new_if(condition, then_branch, else_branch, line);
+  if (node == NULL) {
+    ast_free(condition);
+    ast_free(then_branch);
+    ast_free(else_branch);
+    internal_error();
+  }
+  return node;
 }
 
-void parse_else_continuation(void) {
+ast_node_t *parse_else_tail(void) {
+  ast_node_t *node;
   if (check(TOK_KW_IF)) {
-    match(TOK_KW_IF);
-    parse_expression();
-    match(TOK_KW_THEN);
-    parse_block_statement();
-    parse_else_tail();
+    node = parse_if_statement();
   } else {
-    parse_block_statement();
+    node = parse_block_statement();
   }
+  return node;
 }
 
 void parse_while_statement(void) {
