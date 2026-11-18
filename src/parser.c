@@ -36,6 +36,12 @@ static void internal_error(void) {
   exit(ERR_INTERNAL);
 }
 
+static bool check_identifier(const char *name) {
+  return parser.current_token.type == TOK_ID &&
+         parser.current_token.string_val != NULL &&
+         strcmp(parser.current_token.string_val, name) == 0;
+}
+
 // helper functions
 static void advance(void) {
   token_free(&parser.current_token);
@@ -116,10 +122,10 @@ static char *take_string(void) {
 }
 
 // Forward Declarations of Parsing Functions
-ast_node_t *parse_program(void);
+static ast_node_t *parse_program(void);
 void parse_prologue(void);
 void parse_top_level_list(ast_list_t *defs);
-ast_node_t *parse_func_declaration(bool is_main);
+static ast_node_t *parse_func_declaration(bool is_main);
 void parse_entry_function(void);
 static ast_node_t * parse_type_definition(void);
 static ast_node_t * parse_class(void);
@@ -139,15 +145,14 @@ static ast_node_t * parse_if_statement(void);
 static ast_node_t * parse_else_tail(void);
 void parse_else_continuation(void);
 
-void parse_while_statement(void);
-void parse_for_loop(void);
+static ast_node_t *parse_while_statement(void);
+static ast_node_t *parse_for_loop(void);
 void parse_for_body(void);
-void parse_for_inline(void);
-void parse_for_multiline(void);
-void parse_inline_guards(void);
-void parse_multiline_guards(void);
-void parse_gen_source(void);
-void parse_step(void);
+static ast_node_t * parse_for_inline(int line);
+static ast_node_t * parse_for_multiline(int line);
+void parse_inline_guards(ast_list_t *list);
+void parse_multiline_guards(ast_list_t *list);
+static ast_node_t *parse_gen_source(int line, char *var_name);
 
 static void parse_param_groups(ast_list_t **param_lists, int *list_count);
 static ast_node_t * parse_param(void);
@@ -372,11 +377,9 @@ static ast_node_t *parse_statement(void) {
   case TOK_KW_IF:
     return parse_if_statement();
   case TOK_KW_WHILE:
-    parse_while_statement();
-    break;
+    return parse_while_statement();
   case TOK_KW_FOR:
-    parse_for_loop();
-    break;
+    return parse_for_loop();
   case TOK_KW_RETURN:
     return parse_return_statement();
   default:
@@ -475,88 +478,139 @@ ast_node_t *parse_else_tail(void) {
   return node;
 }
 
-void parse_while_statement(void) {
+ast_node_t *parse_while_statement(void) {
+  int line = current_line;
   match(TOK_KW_WHILE);
-  parse_expression();
+  ast_node_t *condition = parse_expression();
   match(TOK_KW_DO);
-  parse_block();
-}
-
-void parse_for_loop(void) {
-  match(TOK_KW_FOR);
-  parse_for_body();
-}
-
-void parse_for_body(void) {
-  if (check(TOK_NEWLINE)) {
-    parse_for_multiline();
-  } else {
-    parse_for_inline();
+  ast_node_t *body = parse_block();
+  ast_node_t *node = ast_new_while(condition, body, line);
+  if (node == NULL) {
+    ast_free(condition);
+    ast_free(body);
+    internal_error();
   }
+  return node;
 }
 
-void parse_for_inline(void) {
-  match(TOK_ID);
+
+ast_node_t *parse_for_loop(void) {
+  int line = current_line;
+  match(TOK_KW_FOR);
+
+  ast_node_t *loop = NULL;
+  if (check(TOK_NEWLINE)) {
+    loop = parse_for_multiline(line);
+  } else {
+    loop = parse_for_inline(line);
+  }
+  return loop;
+}
+
+ast_node_t *parse_for_inline(int line) {
+  if (!check(TOK_ID)) {
+    syntax_error("Expected for-loop variable");
+  }
+  char *var_name = take_string();
   match(TOK_LARROW);
-  parse_gen_source();
-  parse_inline_guards();
+  ast_node_t *source = parse_gen_source(line, var_name);
+  ast_list_t guards = {0};
+  parse_inline_guards(&guards);
   match(TOK_KW_DO);
-  parse_block_statement();
+  ast_node_t *body = parse_block_statement();
+  ast_node_t *loop = ast_new_for(var_name, source, guards, body, line);
+
+  if (loop == NULL) {
+    free(var_name);
+    ast_free(source);
+    for (int i = 0; i < guards.count; i++) {
+      ast_free(guards.items[i]);
+    }
+    free(guards.items);
+    ast_free(body);
+    internal_error();
+  }
+  return loop;
 }
 
-void parse_for_multiline(void) {
+ast_node_t *parse_for_multiline(int line) {
   while (check(TOK_NEWLINE))
     match(TOK_NEWLINE);
   match(TOK_INDENT);
-  match(TOK_ID);
+  if (!check(TOK_ID)) {
+    syntax_error("Expected for-loop variable");
+  }
+  char *var_name = take_string();
   match(TOK_LARROW);
-  parse_gen_source();
-  parse_multiline_guards();
+  ast_node_t *source = parse_gen_source(line, var_name);
+  ast_list_t guards = {0};
+  parse_multiline_guards(&guards);
   match(TOK_DEDENT);
   while (check(TOK_NEWLINE))
     match(TOK_NEWLINE);
   match(TOK_KW_DO);
-  parse_block_statement();
+  ast_node_t *body = parse_block_statement();
+  ast_node_t *loop = ast_new_for(var_name, source, guards, body, line);
+
+  if (loop == NULL) {
+    free(var_name);
+    ast_free(source);
+    for (int i = 0; i < guards.count; i++) {
+      ast_free(guards.items[i]);
+    }
+    free(guards.items);
+    ast_free(body);
+    internal_error();
+  }
+  return loop;
 }
 
-void parse_inline_guards(void) {
+void parse_inline_guards(ast_list_t *guards) {
   if (check(TOK_KW_IF)) {
     match(TOK_KW_IF);
-    parse_expression();
-    parse_inline_guards();
+    append_node(guards, parse_expression());
+    parse_inline_guards(guards);
   }
   // else epsilon
 }
 
-void parse_multiline_guards(void) {
+void parse_multiline_guards(ast_list_t *guards) {
   if (check(TOK_NEWLINE)) {
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
     if (check(TOK_KW_IF)) {
       match(TOK_KW_IF);
-      parse_expression();
-      parse_multiline_guards();
+      append_node(guards, parse_expression());
+      parse_multiline_guards(guards);
     }
   }
   // else epsilon
 }
 
-void parse_gen_source(void) {
-  parse_expression();
-  if (check(TOK_ID)) {
+ast_node_t *parse_gen_source(int line, char *var_name) {
+  ast_node_t *range = NULL;
+  ast_node_t *from = parse_expression();
+  if (check_identifier("to") || check_identifier("until")) {
+    bool is_until = check_identifier("until");
     match(TOK_ID);
-    parse_expression();
-    parse_step();
+    ast_node_t *end = parse_expression();
+    ast_node_t *step = NULL;
+    if (check_identifier("by")) {
+      match(TOK_ID);
+      step = parse_expression();
+    }
+    range = ast_new_range(is_until, from, end, step, line);
+    if (range == NULL) {
+      ast_free(from);
+      ast_free(end);
+      ast_free(step);
+      free(var_name);
+      internal_error();
+    }  
   }
+  return range;
 }
 
-void parse_step(void) {
-  if (check(TOK_ID)) {
-    match(TOK_ID);
-    parse_expression();
-  }
-  // else epsilon
-}
 
 void parse_arg_groups(void) {
   if (check(TOK_LPAR)) {
@@ -620,6 +674,8 @@ ast_node_t *parse_expression(void) {
         parse_if_statement();
       } else if (check(TOK_KW_MATCH)) {
         parse_expr_match_tail();
+      } else if (check_identifier("until") || check_identifier("by") || check_identifier("to")){
+        break;
       }
       advance();
     }
