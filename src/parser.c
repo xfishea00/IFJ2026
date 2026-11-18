@@ -134,8 +134,8 @@ static ast_node_t *parse_block(void);
 void parse_statement_list(ast_node_t *block);
 void parse_statement_list_tail(ast_node_t *block);
 static ast_node_t *parse_statement(void);
-void parse_id_stmt_tail(void);
-ast_node_t * parse_block_statement(void);
+static ast_node_t *parse_id_stmt_tail(void);
+static ast_node_t *parse_block_statement(void);
 
 static ast_node_t *parse_var_definition(void);
 void parse_expect_type(void);
@@ -158,8 +158,8 @@ static void parse_param_groups(ast_list_t **param_lists, int *list_count);
 static ast_node_t * parse_param(void);
 
 void parse_func_call(void);
-void parse_arg_groups(void);
-void parse_arg_list(void);
+void parse_arg_groups(ast_list_t **lists, int *list_count);
+static ast_node_t *parse_arg_list(void);
 void parse_arg_tail(void);
 void parse_arg_next(void);
 
@@ -368,9 +368,7 @@ void parse_separator(void) {
 static ast_node_t *parse_statement(void) {
   switch (peek()) {
   case TOK_ID:
-    match(TOK_ID);
-    parse_id_stmt_tail();
-    break;
+    return parse_id_stmt_tail();
   case TOK_KW_VAL:
   case TOK_KW_VAR:
     return parse_var_definition();
@@ -388,14 +386,40 @@ static ast_node_t *parse_statement(void) {
   return NULL; //temp
 }
 
-void parse_id_stmt_tail(void) {
+static ast_node_t *parse_id_stmt_tail(void) {
+  char *name = take_string();
+  int line = current_line;
   if (check(TOK_ASSIGN)) {
     // Assignment: id = expression
     match(TOK_ASSIGN);
-    parse_expression();
+    ast_node_t *value = parse_expression();
+    ast_node_t *assign = ast_new_assign(name, value, line);
+    if (assign == NULL) {
+        free(name);
+        ast_free(value);
+        internal_error();
+    }
+    return assign;
   } else if (check(TOK_LPAR)) {
     // Function call: id(args)...
-    parse_arg_groups();
+    int list_count = 0;
+    ast_list_t *list = NULL;
+    parse_arg_groups(&list, &list_count);
+    ast_node_t *call = ast_new_call(name, list, list_count, line);
+
+    if (call == NULL) {
+    free(name);
+    for (int i = 0; i < list_count; i++) {
+      for (int j = 0; j < list[i].count; j++) {
+        ast_free(list[i].items[j]);
+      }
+      free(list[i].items);
+    }
+    free(list);
+    internal_error();
+    }
+   return call;
+
   } else if (check(TOK_KW_MATCH)) {
     // makeshift solution
     parse_expr_match_tail();
@@ -403,9 +427,10 @@ void parse_id_stmt_tail(void) {
     // Id expression or operation tail
     if (parser.current_token.type <= 59 &&
         parser.current_token.type >= 33) { // makeshift operators
-      parse_expression();
+      return parse_expression();
     }
   }
+  return NULL; //temporary
 }
 
 static ast_node_t *parse_var_definition(void) {
@@ -612,40 +637,34 @@ ast_node_t *parse_gen_source(int line, char *var_name) {
 }
 
 
-void parse_arg_groups(void) {
-  if (check(TOK_LPAR)) {
+void parse_arg_groups(ast_list_t **list, int *list_count) {
+  while (check(TOK_LPAR)){
     match(TOK_LPAR);
-    parse_arg_list();
+    ast_list_t *args = ast_lists_add(list, list_count);
+    if (args == NULL) {
+      internal_error();
+    }
+    while (!check(TOK_RPAR)) {
+      append_node(args, parse_arg_list());
+      if (!check(TOK_COMMA)) {
+        break;
+      }
+      match(TOK_COMMA);
+      if(check(TOK_NEWLINE)){
+        match(TOK_NEWLINE);
+      }else if(check(TOK_RPAR)){
+        syntax_error("No newline between trailing comma and RPAR");
+      }
+      
+    }
     match(TOK_RPAR);
-    parse_arg_groups();
   }
   // else epsilon
 }
 
-void parse_arg_list(void) {
-  if (check(TOK_RPAR)) {
-    return; // epsilon
-  }
-  parse_expression();
-  parse_arg_tail();
-}
-
-void parse_arg_tail(void) {
-  if (check(TOK_COMMA)) {
-    match(TOK_COMMA);
-    parse_arg_next();
-  }
-  // else epsilon
-}
-
-void parse_arg_next(void) {
-  if (check(TOK_NEWLINE)) {
-    match(TOK_NEWLINE);
-    parse_arg_list();
-  } else {
-    parse_expression();
-    parse_arg_tail();
-  }
+static ast_node_t *parse_arg_list(void) {
+  ast_node_t *arg = parse_expression();
+  return arg;
 }
 
 ast_node_t *parse_expression(void) {
