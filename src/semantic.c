@@ -8,6 +8,8 @@
 #include "semantic.h"
 #include "error.h"
 #include "symbol.h"
+#include "type.h"
+
 #include <stdbool.h>
 #include <string.h>
 
@@ -98,7 +100,10 @@ static int check_main(ast_node_t *program) {
         return ERR_SEM_ARGS; // @main has parameters
       }
     }
-    // TODO: check return type of @main
+    type_t *ret = def->func_def.ret_type;
+    if (ret != NULL && ret->kind != T_UNIT) {
+      return ERR_SEM_TYPE;
+    }
   }
   if (main_count == 0) {
     return ERR_SEM_UNDEF; // no @main
@@ -273,7 +278,10 @@ static int sem_stmt(ast_node_t *stmt) {
     if (current_function->decl->func_def.ret_type == NULL) {
       return ERR_SEM_TYPE;
     }
-    // TODO: check return type
+    type_t *ret = current_function->decl->func_def.ret_type;
+    if (stmt->return_stmt.value == NULL && ret->kind != T_UNIT) {
+      return ERR_SEM_OTHER;
+    }
     return ERR_OK;
   }
 
