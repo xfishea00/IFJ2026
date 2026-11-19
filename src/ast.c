@@ -8,8 +8,8 @@
 #include "ast.h"
 #include "type.h"
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define LIST_INIT_CAPACITY 4
 

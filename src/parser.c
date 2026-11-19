@@ -5,7 +5,9 @@
  * Brief:   Syntax analysis
  */
 
+#include "ast.h"
 #include "error.h"
+#include "expression_parser.h"
 #include "scanner.h"
 #include "symtable.h"
 #include "token.h"
@@ -14,8 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ast.h"
-#include "expression_parser.h"
 
 #define current_line parser.current_token.line
 
@@ -61,14 +61,13 @@ static int advance_expression_token(token_t *token) {
   return ERR_OK;
 }
 
-
 static token_type_t peek(void) { return parser.current_token.type; }
 
 static bool check(token_type_t type) { return peek() == type; }
 
 static bool check_literal(void) {
-  return check(TOK_INT_LIT) || check(TOK_STRING_LIT) || check(TOK_DOUBLE_LIT) 
-         || check(TOK_KW_TRUE) || check(TOK_KW_FALSE);
+  return check(TOK_INT_LIT) || check(TOK_STRING_LIT) || check(TOK_DOUBLE_LIT) ||
+         check(TOK_KW_TRUE) || check(TOK_KW_FALSE);
 }
 
 static void match(token_type_t expected) {
@@ -142,8 +141,8 @@ void parse_prologue(void);
 void parse_top_level_list(ast_list_t *defs);
 static ast_node_t *parse_func_declaration(bool is_main);
 void parse_entry_function(void);
-static ast_node_t * parse_type_definition(void);
-static ast_node_t * parse_class(void);
+static ast_node_t *parse_type_definition(void);
+static ast_node_t *parse_class(void);
 
 static ast_node_t *parse_block(void);
 void parse_statement_list(ast_node_t *block);
@@ -156,25 +155,25 @@ static ast_node_t *parse_var_definition(void);
 type_t *parse_expect_type(void);
 static ast_node_t *parse_return_statement(void);
 
-static ast_node_t * parse_if_statement(void);
-static ast_node_t * parse_else_tail(void);
+static ast_node_t *parse_if_statement(void);
+static ast_node_t *parse_else_tail(void);
 
 static ast_node_t *parse_while_statement(void);
 static ast_node_t *parse_for_loop(void);
-static ast_node_t * parse_for_inline(int line);
-static ast_node_t * parse_for_multiline(int line);
+static ast_node_t *parse_for_inline(int line);
+static ast_node_t *parse_for_multiline(int line);
 void parse_inline_guards(ast_list_t *list);
 void parse_multiline_guards(ast_list_t *list);
 static ast_node_t *parse_gen_source(int line, char *var_name);
 
 static void parse_param_groups(ast_list_t **param_lists, int *list_count);
-static ast_node_t * parse_param(void);
+static ast_node_t *parse_param(void);
 
 void parse_arg_groups(ast_list_t **lists, int *list_count);
 static ast_node_t *parse_arg_list(void);
 
-static ast_node_t* parse_expression(void);
-static ast_node_t *parse_expr_match_tail(ast_node_t* subject);
+static ast_node_t *parse_expression(void);
+static ast_node_t *parse_expr_match_tail(ast_node_t *subject);
 static ast_node_t *parse_literals(void);
 static ast_node_t *parse_list_def(void);
 void parse_list_elements(void);
@@ -187,7 +186,7 @@ void parse_separator(void);
 
 // Implementation of Grammar Rules
 
-ast_node_t* parse_program(void) {
+ast_node_t *parse_program(void) {
   int line = current_line;
   parse_prologue();
 
@@ -209,7 +208,7 @@ void parse_prologue(void) {
 }
 
 void parse_top_level_list(ast_list_t *defs) {
-  while (!check(TOK_EOF)){
+  while (!check(TOK_EOF)) {
     switch (peek()) {
     case TOK_KW_DEF:
       append_node(defs, parse_func_declaration(false));
@@ -236,23 +235,24 @@ void parse_top_level_list(ast_list_t *defs) {
   }
 }
 
-
 ast_node_t *parse_func_declaration(bool is_main) {
   match(TOK_KW_DEF);
   int line = current_line;
-  char* name;
-  if(check(TOK_ID)) name = take_string();
+  char *name;
+  if (check(TOK_ID))
+    name = take_string();
   ast_list_t *param_lists = NULL;
   int param_list_count = 0;
   parse_param_groups(&param_lists, &param_list_count);
-  
+
   type_t *ret_type = parse_expect_type();
   match(TOK_ASSIGN);
   ast_node_t *body = parse_block_statement();
 
-  ast_node_t *function = ast_new_func_def(name, is_main, ret_type, param_lists, param_list_count, body, line);
-  
-  //free 
+  ast_node_t *function = ast_new_func_def(name, is_main, ret_type, param_lists,
+                                          param_list_count, body, line);
+
+  // free
   if (function == NULL) {
     free(name);
     for (int i = 0; i < param_list_count; i++) {
@@ -290,12 +290,11 @@ static void parse_param_groups(ast_list_t **param_lists, int *list_count) {
         break;
       }
       match(TOK_COMMA);
-      if(check(TOK_NEWLINE)){
+      if (check(TOK_NEWLINE)) {
         match(TOK_NEWLINE);
-      }else if(check(TOK_RPAR)){
+      } else if (check(TOK_RPAR)) {
         syntax_error("No newline between trailing comma and RPAR");
       }
-      
     }
     match(TOK_RPAR);
   }
@@ -317,16 +316,16 @@ static ast_node_t *parse_param(void) {
   return param;
 }
 
-ast_node_t * parse_block_statement(void) {
+ast_node_t *parse_block_statement(void) {
   if (check(TOK_NEWLINE)) {
     return parse_block();
   } else {
     ast_node_t *block = ast_new_block(current_line);
-      if (block == NULL) {
-        internal_error();
-      }
-      append_node(&block->block.stmts, parse_statement());
-      return block;
+    if (block == NULL) {
+      internal_error();
+    }
+    append_node(&block->block.stmts, parse_statement());
+    return block;
   }
 }
 
@@ -340,7 +339,7 @@ static ast_node_t *parse_block(void) {
     internal_error();
   }
 
-  while (!check(TOK_DEDENT)){ // unsure
+  while (!check(TOK_DEDENT)) { // unsure
     if (check(TOK_EOF)) {
       ast_free(block);
       syntax_error("Unterminated block");
@@ -398,7 +397,7 @@ static ast_node_t *parse_statement(void) {
   default:
     return parse_expression();
   }
-  return NULL; //temp
+  return NULL; // temp
 }
 
 static ast_node_t *parse_id_stmt_tail(void) {
@@ -410,9 +409,9 @@ static ast_node_t *parse_id_stmt_tail(void) {
     ast_node_t *value = parse_expression();
     ast_node_t *assign = ast_new_assign(name, value, line);
     if (assign == NULL) {
-        free(name);
-        ast_free(value);
-        internal_error();
+      free(name);
+      ast_free(value);
+      internal_error();
     }
     return assign;
   } else if (check(TOK_LPAR)) {
@@ -423,15 +422,15 @@ static ast_node_t *parse_id_stmt_tail(void) {
     ast_node_t *call = ast_new_call(name, list, list_count, line);
 
     if (call == NULL) {
-    free(name);
-    for (int i = 0; i < list_count; i++) {
-      for (int j = 0; j < list[i].count; j++) {
-        ast_free(list[i].items[j]);
+      free(name);
+      for (int i = 0; i < list_count; i++) {
+        for (int j = 0; j < list[i].count; j++) {
+          ast_free(list[i].items[j]);
+        }
+        free(list[i].items);
       }
-      free(list[i].items);
-    }
-    free(list);
-    internal_error();
+      free(list);
+      internal_error();
     }
     if (check(TOK_KW_MATCH)) {
       return parse_expr_match_tail(call);
@@ -446,42 +445,70 @@ static ast_node_t *parse_id_stmt_tail(void) {
     }
     return parse_expr_match_tail(subject);
   } else {
-     ast_node_t *left = ast_new_id(name, line);
-     if (left == NULL) {
-       internal_error();
-     }
-     ast_op_t op;
-     bool has_operator = true;
-     switch (peek()) {
-     case TOK_PLUS: op = OP_ADD; break;
-     case TOK_MINUS: op = OP_SUB; break;
-     case TOK_CONCAT: op = OP_CONCAT; break;
-     case TOK_MUL: op = OP_MUL; break;
-     case TOK_DIV: op = OP_DIV; break;
-     case TOK_LT: op = OP_LT; break;
-     case TOK_GT: op = OP_GT; break;
-     case TOK_LE: op = OP_LE; break;
-     case TOK_GE: op = OP_GE; break;
-     case TOK_EQ: op = OP_EQ; break;
-     case TOK_NEQ: op = OP_NEQ; break;
-     case TOK_AND: op = OP_AND; break;
-     case TOK_OR: op = OP_OR; break;
-     default: has_operator = false; break;
-     }
-     if (!has_operator) {
-       return left;
-     }
-     advance();
-     ast_node_t *right = parse_expression();
-     ast_node_t *binary = ast_new_binary(op, left, right, line);
-     if (binary == NULL) {
-       ast_free(left);
-       ast_free(right);
-       internal_error();
-     }
-     return binary;
+    ast_node_t *left = ast_new_id(name, line);
+    if (left == NULL) {
+      internal_error();
+    }
+    ast_op_t op;
+    bool has_operator = true;
+    switch (peek()) {
+    case TOK_PLUS:
+      op = OP_ADD;
+      break;
+    case TOK_MINUS:
+      op = OP_SUB;
+      break;
+    case TOK_CONCAT:
+      op = OP_CONCAT;
+      break;
+    case TOK_MUL:
+      op = OP_MUL;
+      break;
+    case TOK_DIV:
+      op = OP_DIV;
+      break;
+    case TOK_LT:
+      op = OP_LT;
+      break;
+    case TOK_GT:
+      op = OP_GT;
+      break;
+    case TOK_LE:
+      op = OP_LE;
+      break;
+    case TOK_GE:
+      op = OP_GE;
+      break;
+    case TOK_EQ:
+      op = OP_EQ;
+      break;
+    case TOK_NEQ:
+      op = OP_NEQ;
+      break;
+    case TOK_AND:
+      op = OP_AND;
+      break;
+    case TOK_OR:
+      op = OP_OR;
+      break;
+    default:
+      has_operator = false;
+      break;
+    }
+    if (!has_operator) {
+      return left;
+    }
+    advance();
+    ast_node_t *right = parse_expression();
+    ast_node_t *binary = ast_new_binary(op, left, right, line);
+    if (binary == NULL) {
+      ast_free(left);
+      ast_free(right);
+      internal_error();
+    }
+    return binary;
   }
-  return NULL; //temporary
+  return NULL; // temporary
 }
 
 static ast_node_t *parse_var_definition(void) {
@@ -527,9 +554,9 @@ static ast_node_t *parse_if_statement(void) {
   match(TOK_KW_IF);
   ast_node_t *condition = parse_expression();
   match(TOK_KW_THEN);
-  ast_node_t * then_branch = parse_block_statement();
-  ast_node_t * else_branch = NULL;
-  while (check(TOK_KW_ELSE)){
+  ast_node_t *then_branch = parse_block_statement();
+  ast_node_t *else_branch = NULL;
+  while (check(TOK_KW_ELSE)) {
     match(TOK_KW_ELSE);
     else_branch = parse_else_tail();
   }
@@ -545,17 +572,17 @@ static ast_node_t *parse_if_statement(void) {
 }
 
 ast_node_t *parse_else_tail(void) {
-    ast_node_t *node;
-    if (check(TOK_KW_IF)) {
-      node = ast_new_block(current_line);
-      if (node == NULL) {
-        internal_error();
-      }
-      append_node(&node->block.stmts, parse_if_statement());
-    } else {
-      node = parse_block_statement();
+  ast_node_t *node;
+  if (check(TOK_KW_IF)) {
+    node = ast_new_block(current_line);
+    if (node == NULL) {
+      internal_error();
     }
-    return node;
+    append_node(&node->block.stmts, parse_if_statement());
+  } else {
+    node = parse_block_statement();
+  }
+  return node;
 }
 
 ast_node_t *parse_while_statement(void) {
@@ -572,7 +599,6 @@ ast_node_t *parse_while_statement(void) {
   }
   return node;
 }
-
 
 ast_node_t *parse_for_loop(void) {
   int line = current_line;
@@ -686,16 +712,15 @@ ast_node_t *parse_gen_source(int line, char *var_name) {
       ast_free(step);
       free(var_name);
       internal_error();
-    }  
-  }  else {
-      return from;
     }
+  } else {
+    return from;
+  }
   return range;
 }
 
-
 void parse_arg_groups(ast_list_t **list, int *list_count) {
-  while (check(TOK_LPAR)){
+  while (check(TOK_LPAR)) {
     match(TOK_LPAR);
     ast_list_t *args = ast_lists_add(list, list_count);
     if (args == NULL) {
@@ -707,12 +732,11 @@ void parse_arg_groups(ast_list_t **list, int *list_count) {
         break;
       }
       match(TOK_COMMA);
-      if(check(TOK_NEWLINE)){
+      if (check(TOK_NEWLINE)) {
         match(TOK_NEWLINE);
-      }else if(check(TOK_RPAR)){
+      } else if (check(TOK_RPAR)) {
         syntax_error("No newline between trailing comma and RPAR");
       }
-      
     }
     match(TOK_RPAR);
   }
@@ -753,8 +777,8 @@ static ast_node_t *parse_expression_primary(void) {
           free(list);
         }
       }
-      ast_node_t *member = ast_new_member(member_name, object, has_parens,
-                                          args, line);
+      ast_node_t *member =
+          ast_new_member(member_name, object, has_parens, args, line);
       if (member == NULL) {
         ast_free(object);
         free(member_name);
@@ -771,8 +795,8 @@ static ast_node_t *parse_expression_primary(void) {
       ast_node_t *object = ast_new_id(list_name, line);
       char *member_name = take_string();
       ast_list_t args = {0};
-      ast_node_t *member = ast_new_member(member_name, object, false, args,
-                                          line);
+      ast_node_t *member =
+          ast_new_member(member_name, object, false, args, line);
       if (member == NULL) {
         ast_free(object);
         free(member_name);
@@ -835,19 +859,56 @@ static ast_node_t *parse_expression_primary(void) {
       ast_op_t op;
       bool found = false;
       switch (peek()) {
-      case TOK_PLUS: op = OP_ADD; found = true; break;
-      case TOK_MINUS: op = OP_SUB; found = true; break;
-      case TOK_MUL: op = OP_MUL; found = true; break;
-      case TOK_DIV: op = OP_DIV; found = true; break;
-      case TOK_LT: op = OP_LT; found = true; break;
-      case TOK_GT: op = OP_GT; found = true; break;
-      case TOK_LE: op = OP_LE; found = true; break;
-      case TOK_GE: op = OP_GE; found = true; break;
-      case TOK_EQ: op = OP_EQ; found = true; break;
-      case TOK_NEQ: op = OP_NEQ; found = true; break;
-      case TOK_AND: op = OP_AND; found = true; break;
-      case TOK_OR: op = OP_OR; found = true; break;
-      default: break;
+      case TOK_PLUS:
+        op = OP_ADD;
+        found = true;
+        break;
+      case TOK_MINUS:
+        op = OP_SUB;
+        found = true;
+        break;
+      case TOK_MUL:
+        op = OP_MUL;
+        found = true;
+        break;
+      case TOK_DIV:
+        op = OP_DIV;
+        found = true;
+        break;
+      case TOK_LT:
+        op = OP_LT;
+        found = true;
+        break;
+      case TOK_GT:
+        op = OP_GT;
+        found = true;
+        break;
+      case TOK_LE:
+        op = OP_LE;
+        found = true;
+        break;
+      case TOK_GE:
+        op = OP_GE;
+        found = true;
+        break;
+      case TOK_EQ:
+        op = OP_EQ;
+        found = true;
+        break;
+      case TOK_NEQ:
+        op = OP_NEQ;
+        found = true;
+        break;
+      case TOK_AND:
+        op = OP_AND;
+        found = true;
+        break;
+      case TOK_OR:
+        op = OP_OR;
+        found = true;
+        break;
+      default:
+        break;
       }
       if (found) {
         advance();
@@ -896,8 +957,8 @@ static ast_node_t *parse_expression_primary(void) {
           free(list);
         }
       }
-      ast_node_t *member = ast_new_member(member_name, inner, has_parens,
-                                          args, line);
+      ast_node_t *member =
+          ast_new_member(member_name, inner, has_parens, args, line);
       if (member == NULL) {
         ast_free(inner);
         free(member_name);
@@ -934,8 +995,8 @@ static ast_node_t *parse_expression_primary(void) {
           free(list);
         }
       }
-      ast_node_t *member = ast_new_member(member_name, id, has_parens, args,
-                                          line);
+      ast_node_t *member =
+          ast_new_member(member_name, id, has_parens, args, line);
       if (member == NULL) {
         ast_free(id);
         free(member_name);
@@ -967,25 +1028,66 @@ static ast_node_t *parse_expression_primary(void) {
   return NULL;
 }
 
-static ast_node_t *parse_expression_operators(ast_node_t *left, int min_precedence) {
+static ast_node_t *parse_expression_operators(ast_node_t *left,
+                                              int min_precedence) {
   while (true) {
     ast_op_t op;
     int precedence;
     switch (peek()) {
-    case TOK_MUL: op = OP_MUL; precedence = 5; break;
-    case TOK_DIV: op = OP_DIV; precedence = 5; break;
-    case TOK_CONCAT: op = OP_CONCAT; precedence = 4; break;
-    case TOK_PLUS: op = OP_ADD; precedence = 4; break;
-    case TOK_MINUS: op = OP_SUB; precedence = 4; break;
-    case TOK_LT: op = OP_LT; precedence = 3; break;
-    case TOK_GT: op = OP_GT; precedence = 3; break;
-    case TOK_LE: op = OP_LE; precedence = 3; break;
-    case TOK_GE: op = OP_GE; precedence = 3; break;
-    case TOK_EQ: op = OP_EQ; precedence = 3; break;
-    case TOK_NEQ: op = OP_NEQ; precedence = 3; break;
-    case TOK_AND: op = OP_AND; precedence = 2; break;
-    case TOK_OR: op = OP_OR; precedence = 1; break;
-    default: return left;
+    case TOK_MUL:
+      op = OP_MUL;
+      precedence = 5;
+      break;
+    case TOK_DIV:
+      op = OP_DIV;
+      precedence = 5;
+      break;
+    case TOK_CONCAT:
+      op = OP_CONCAT;
+      precedence = 4;
+      break;
+    case TOK_PLUS:
+      op = OP_ADD;
+      precedence = 4;
+      break;
+    case TOK_MINUS:
+      op = OP_SUB;
+      precedence = 4;
+      break;
+    case TOK_LT:
+      op = OP_LT;
+      precedence = 3;
+      break;
+    case TOK_GT:
+      op = OP_GT;
+      precedence = 3;
+      break;
+    case TOK_LE:
+      op = OP_LE;
+      precedence = 3;
+      break;
+    case TOK_GE:
+      op = OP_GE;
+      precedence = 3;
+      break;
+    case TOK_EQ:
+      op = OP_EQ;
+      precedence = 3;
+      break;
+    case TOK_NEQ:
+      op = OP_NEQ;
+      precedence = 3;
+      break;
+    case TOK_AND:
+      op = OP_AND;
+      precedence = 2;
+      break;
+    case TOK_OR:
+      op = OP_OR;
+      precedence = 1;
+      break;
+    default:
+      return left;
     }
     if (precedence < min_precedence) {
       return left;
@@ -1026,8 +1128,8 @@ static ast_node_t *parse_expression(void) {
     return expression;
   }
 
-  int rc = parse_non_id_expression(&parser.current_token,
-                                    advance_expression_token);
+  int rc =
+      parse_non_id_expression(&parser.current_token, advance_expression_token);
   if (rc == ERR_SYNTAX) {
     syntax_error("Invalid expression");
   }
@@ -1038,30 +1140,27 @@ static ast_node_t *parse_expression(void) {
   return ast_new_unit(line);
 }
 
-static ast_node_t *parse_expr_match_tail(ast_node_t* subject) {
-  int line = current_line; 
+static ast_node_t *parse_expr_match_tail(ast_node_t *subject) {
+  int line = current_line;
   match(TOK_KW_MATCH);
-  while (check(TOK_NEWLINE)){
+  while (check(TOK_NEWLINE)) {
     match(TOK_NEWLINE);
   }
   // makeshift
   match(TOK_INDENT);
   ast_list_t cases = {0};
-  
 
   parse_case_list(subject, &cases);
-  
-
 
   match(TOK_DEDENT);
   ast_node_t *match_node = ast_new_match(subject, cases, line);
   if (match_node == NULL) {
-  ast_free(subject);
-  for (int i = 0; i < cases.count; i++) {
-    ast_free(cases.items[i]);
-  }
-  free(cases.items);
-  internal_error();
+    ast_free(subject);
+    for (int i = 0; i < cases.count; i++) {
+      ast_free(cases.items[i]);
+    }
+    free(cases.items);
+    internal_error();
   }
   return match_node;
 
@@ -1069,7 +1168,7 @@ static ast_node_t *parse_expr_match_tail(ast_node_t* subject) {
 }
 
 void parse_case_list(ast_node_t *subject, ast_list_t *cases) {
-  
+
   if (check(TOK_KW_CASE)) {
     int line = current_line;
     match(TOK_KW_CASE);
@@ -1081,9 +1180,9 @@ void parse_case_list(ast_node_t *subject, ast_list_t *cases) {
     }
     match(TOK_ARROW);
     ast_node_t *body = NULL;
-    if(!check(TOK_NEWLINE)){
+    if (!check(TOK_NEWLINE)) {
       body = parse_expression();
-    } else{
+    } else {
       body = parse_block();
     }
     ast_node_t *case_node = ast_new_case(pattern, guard, body, line);
@@ -1098,20 +1197,19 @@ void parse_case_list(ast_node_t *subject, ast_list_t *cases) {
       free(cases->items);
       internal_error();
     }
-    
+
     append_node(cases, case_node);
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
     parse_case_list(subject, cases);
   }
   // else epsilon
-  
 }
 
 // Reminder to add class constructor variant
 static ast_node_t *parse_model(void) {
   int line = current_line;
-  if(check(TOK_UNDERSCORE)){
+  if (check(TOK_UNDERSCORE)) {
     match(TOK_UNDERSCORE);
     ast_node_t *pattern = ast_new_pat_wildcard(line);
     if (pattern == NULL) {
@@ -1119,47 +1217,47 @@ static ast_node_t *parse_model(void) {
     }
     return pattern;
   }
-  if(check_literal()){
+  if (check_literal()) {
     return parse_literals();
   }
- if (!check(TOK_ID)) {
+  if (!check(TOK_ID)) {
     syntax_error("Invalid pattern in match case");
   }
 
   char *name = take_string();
-    if (check(TOK_COLON)) {
-      match(TOK_COLON);
-      type_t *type = match_type();
-      ast_node_t *pattern = ast_new_pat_typed(name, type, line);
-      if (pattern == NULL) {
+  if (check(TOK_COLON)) {
+    match(TOK_COLON);
+    type_t *type = match_type();
+    ast_node_t *pattern = ast_new_pat_typed(name, type, line);
+    if (pattern == NULL) {
       free(name);
       internal_error();
-      }
-      return pattern;
-    } 
-    
-    if (check(TOK_LPAR)) {
-      // class constructor
-      match(TOK_LPAR);
-      ast_list_t bindings = {0};
-      while (!check(TOK_RPAR)) {
-        int binding_line = current_line;
-        char *binding_name = NULL;
-        if (check(TOK_ID)) {
-          binding_name = take_string();
-        } else if (check(TOK_UNDERSCORE)) {
-          match(TOK_UNDERSCORE);
-        } else {
-          free(name);
-          for (int i = 0; i < bindings.count; i++) {
-            ast_free(bindings.items[i]);
-          }
-          free(bindings.items);
-          syntax_error("Expected class-pattern binding");
+    }
+    return pattern;
+  }
+
+  if (check(TOK_LPAR)) {
+    // class constructor
+    match(TOK_LPAR);
+    ast_list_t bindings = {0};
+    while (!check(TOK_RPAR)) {
+      int binding_line = current_line;
+      char *binding_name = NULL;
+      if (check(TOK_ID)) {
+        binding_name = take_string();
+      } else if (check(TOK_UNDERSCORE)) {
+        match(TOK_UNDERSCORE);
+      } else {
+        free(name);
+        for (int i = 0; i < bindings.count; i++) {
+          ast_free(bindings.items[i]);
         }
-        
-        ast_node_t *binding = ast_new_id(binding_name, binding_line);
-        if (binding == NULL) {
+        free(bindings.items);
+        syntax_error("Expected class-pattern binding");
+      }
+
+      ast_node_t *binding = ast_new_id(binding_name, binding_line);
+      if (binding == NULL) {
         free(binding_name);
         free(name);
         for (int i = 0; i < bindings.count; i++) {
@@ -1167,33 +1265,33 @@ static ast_node_t *parse_model(void) {
         }
         free(bindings.items);
         internal_error();
-        }
-        append_node(&bindings, binding);
-        if (!check(TOK_COMMA)) {
-        break;
-        }
-        match(TOK_COMMA);
       }
-      match(TOK_RPAR);
-      ast_node_t *pattern = ast_new_pat_class(name, bindings, line);
-      if (pattern == NULL) {
+      append_node(&bindings, binding);
+      if (!check(TOK_COMMA)) {
+        break;
+      }
+      match(TOK_COMMA);
+    }
+    match(TOK_RPAR);
+    ast_node_t *pattern = ast_new_pat_class(name, bindings, line);
+    if (pattern == NULL) {
       free(name);
       for (int i = 0; i < bindings.count; i++) {
         ast_free(bindings.items[i]);
       }
       free(bindings.items);
       internal_error();
-      }
-      return pattern;
     }
+    return pattern;
+  }
   free(name);
   syntax_error("Expected ':' or '(' after match-pattern identifier");
   return NULL;
-}  
+}
 
-static ast_node_t *parse_literals(void){
+static ast_node_t *parse_literals(void) {
   int line = current_line;
-  
+
   if (check(TOK_INT_LIT)) {
     int64_t value = parser.current_token.int_val;
     advance();
@@ -1243,21 +1341,21 @@ static ast_node_t *parse_list_def(void) {
   while (check(TOK_NEWLINE)) {
     match(TOK_NEWLINE);
   }
-  while(!check(TOK_RPAR)){
-    if(check_literal()){
+  while (!check(TOK_RPAR)) {
+    if (check_literal()) {
       ast_list_append(&owned_items, parse_literals());
-    }else if(check(TOK_ID)){
+    } else if (check(TOK_ID)) {
       ast_list_append(&owned_items, ast_new_id(take_string(), line));
-    }else if(check(TOK_KW_LIST)){
+    } else if (check(TOK_KW_LIST)) {
       ast_list_append(&owned_items, parse_list_def());
-    }else if(check(TOK_COMMA)){
+    } else if (check(TOK_COMMA)) {
       match(TOK_COMMA);
       while (check(TOK_NEWLINE)) {
         match(TOK_NEWLINE);
       }
-    }else if(check(TOK_NEWLINE)){
+    } else if (check(TOK_NEWLINE)) {
       match(TOK_NEWLINE);
-    }else{
+    } else {
       syntax_error("Invalid list element");
     }
   }
@@ -1274,7 +1372,6 @@ static ast_node_t *parse_list_def(void) {
   return list;
 }
 
-
 ast_node_t *parse_class(void) {
   int line = current_line;
   match(TOK_KW_CASE);
@@ -1285,16 +1382,16 @@ ast_node_t *parse_class(void) {
   char *name = take_string();
   match(TOK_LPAR);
   ast_list_t attrs = {0};
-  while(!check(TOK_RPAR)){
+  while (!check(TOK_RPAR)) {
     append_node(&attrs, parse_param());
-    if (!check(TOK_COMMA)){
+    if (!check(TOK_COMMA)) {
       break;
     }
     match(TOK_COMMA);
-    if(!check(TOK_NEWLINE) && !check(TOK_ID)){
+    if (!check(TOK_NEWLINE) && !check(TOK_ID)) {
       syntax_error("Unexpected token in class attributes");
     }
-    if(check(TOK_NEWLINE)){
+    if (check(TOK_NEWLINE)) {
       match(TOK_NEWLINE);
       break;
     }
@@ -1302,7 +1399,7 @@ ast_node_t *parse_class(void) {
   match(TOK_RPAR);
   ast_node_t *class_node = ast_new_case_class(name, attrs, line);
 
-  //Free if error
+  // Free if error
   if (class_node == NULL) {
     free(name);
     for (int i = 0; i < attrs.count; i++) {
@@ -1314,7 +1411,7 @@ ast_node_t *parse_class(void) {
   return class_node;
 }
 
-static ast_node_t * parse_type_definition(void) {
+static ast_node_t *parse_type_definition(void) {
   int line = current_line;
   match(TOK_KW_TYPE);
   if (!check(TOK_ID)) {
@@ -1338,5 +1435,3 @@ ast_node_t *parse(void) {
   advance();
   return parse_program();
 }
-
-  

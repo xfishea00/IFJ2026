@@ -6,8 +6,8 @@
  */
 
 #include "generator.h"
-#include "type.h"
 #include "symbol.h"
+#include "type.h"
 
 #include <inttypes.h>
 #include <stdarg.h>
@@ -15,6 +15,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void generate_error(generator_state_t *state, const char *error_message,
+                           ...);
+static void generate_function(generator_state_t *state, ast_node_t *node);
+static void generate_function_parameters(generator_state_t *state,
+                                         ast_node_t *node);
+static void generate_block(generator_state_t *state, ast_node_t *node);
+static void generate_variable_declaration(generator_state_t *state,
+                                          ast_node_t *node);
+static void generate_assignment(generator_state_t *state, ast_node_t *node);
+static void generate_return(generator_state_t *state, ast_node_t *node);
+static void generate_function_return(generator_state_t *state,
+                                     ast_node_t *node);
+static void generate_literal(generator_state_t *state, ast_node_t *node);
+static void generate_variable(generator_state_t *state, ast_node_t *node);
+static void generate_unary_expression(generator_state_t *state,
+                                      ast_node_t *node);
+static void generate_binary_expression(generator_state_t *state,
+                                       ast_node_t *node);
+static void generate_function_call(generator_state_t *state, ast_node_t *node);
+static void generate_if(generator_state_t *state, ast_node_t *node);
+static void generate_while(generator_state_t *state, ast_node_t *node);
+static void generate_string(generator_state_t *state, ast_node_t *node);
+static void generate_builtin_call(generator_state_t *state, ast_node_t *node);
+static void generate_print(generator_state_t *state, ast_node_t *node);
+static void generate_builtin_read(generator_state_t *state, const char *type);
+static void generate_toStr(generator_state_t *state);
+static void generate_toInt(generator_state_t *state);
+static void generate_strLength(generator_state_t *state);
+static void generate_subStr(generator_state_t *state);
+static void generate_ord(generator_state_t *state);
+static void generate_chr(generator_state_t *state);
+static void generate_for(generator_state_t *state, ast_node_t *node);
+static void generate_match(generator_state_t *state, ast_node_t *node);
+static void generate_readBoolean(generator_state_t *state);
+static void generate_readIntMaybe(generator_state_t *state);
+static void generate_readDoubleMaybe(generator_state_t *state);
 
 /*
  * ----------------------------------------------------------------
@@ -100,8 +137,8 @@ static void generate_label_name(generator_state_t *state, char *buffer,
  * @param state The generator state.
  * @param error_message The error message to generate.
  */
-static void generate_error(generator_state_t *state,
-                           const char *error_message, ...) {
+static void generate_error(generator_state_t *state, const char *error_message,
+                           ...) {
   if (state == NULL) {
     return;
   }
@@ -749,7 +786,7 @@ static void generate_function_call(generator_state_t *state, ast_node_t *node) {
 
   if (node->call.symbol->unique_name == NULL ||
       node->call.symbol->decl == NULL ||
-      node->call.symbol->decl->kind != AST_PARAM) {
+      node->call.symbol->decl->kind != AST_FUNC_DEF) {
     state->error = true;
     return;
   }
