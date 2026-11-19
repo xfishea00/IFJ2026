@@ -8,6 +8,8 @@
 #ifndef TYPE_H
 #define TYPE_H
 
+#include "token.h"
+
 #include <stdbool.h>
 
 // type kinds
@@ -39,6 +41,8 @@ type_t *type_double(void);
 type_t *type_string(void);
 type_t *type_bool(void);
 type_t *type_unit(void);
+// base type for a type keyword token, NULL for other tokens
+type_t *type_from_token(token_type_t token);
 
 // true if both types are the same
 bool type_equal(type_t *a, type_t *b);

@@ -22,6 +22,23 @@ type_t *type_string(void) { return &string_type; }
 type_t *type_bool(void) { return &bool_type; }
 type_t *type_unit(void) { return &unit_type; }
 
+type_t *type_from_token(token_type_t token) {
+  switch (token) {
+  case TOK_KW_INT:
+    return type_int();
+  case TOK_KW_DOUBLE:
+    return type_double();
+  case TOK_KW_STRING:
+    return type_string();
+  case TOK_KW_BOOLEAN:
+    return type_bool();
+  case TOK_KW_UNIT:
+    return type_unit();
+  default:
+    return NULL; // list, union and class names are not base types
+  }
+}
+
 bool type_equal(type_t *a, type_t *b) {
   if (a == NULL || b == NULL) {
     return false;
