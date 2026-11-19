@@ -137,7 +137,7 @@ static char *take_string(void) {
 }
 
 // Forward Declarations of Parsing Functions
-static ast_node_t *parse_program(void);
+ast_node_t *parse_program(void);
 void parse_prologue(void);
 void parse_top_level_list(ast_list_t *defs);
 static ast_node_t *parse_func_declaration(bool is_main);
@@ -1322,16 +1322,10 @@ static ast_node_t * parse_type_definition(void) {
   return type_node;
 }
 
-int main(void) {
-  int rc = scanner_init(stdin);
-  if (rc != ERR_OK) {
-    fprintf(stderr, "Failed to initialize scanner.\n");
-    return rc;
-  }
+// parses the program from the scanner, returns the AST root
+ast_node_t *parse(void) {
   advance();
-  ast_node_t *ast_root = parse_program();
-  ast_print(ast_root);
-  scanner_free();
-  ast_free(ast_root);
-  return ERR_OK;
-} 
+  return parse_program();
+}
+
+  
