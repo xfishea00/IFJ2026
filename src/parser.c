@@ -57,7 +57,8 @@ static token_type_t peek(void) { return parser.current_token.type; }
 static bool check(token_type_t type) { return peek() == type; }
 
 static bool check_literal(void) {
-  return check(TOK_INT_LIT) || check(TOK_STRING_LIT) || check(TOK_DOUBLE_LIT);
+  return check(TOK_INT_LIT) || check(TOK_STRING_LIT) || check(TOK_DOUBLE_LIT) 
+         || check(TOK_KW_TRUE) || check(TOK_KW_FALSE);
 }
 
 static void match(token_type_t expected) {
@@ -163,16 +164,17 @@ static ast_node_t *parse_arg_list(void);
 void parse_arg_tail(void);
 void parse_arg_next(void);
 
-ast_node_t* parse_expression(void);
+static ast_node_t* parse_expression(void);
 //void parse_non_id_expression(void);
-void parse_expr_match_tail(void);
+static ast_node_t *parse_expr_match_tail(ast_node_t* subject);
+static ast_node_t *parse_literals(void);
 void parse_list_def(void);
 void parse_list_elements(void);
 void parse_list_tail(void);
 void parse_list_next(void);
 
-void parse_case_list(void);
-void parse_model(void);
+void parse_case_list(ast_node_t *subject, ast_list_t *cases);
+static ast_node_t *parse_model(void);
 void parse_separator(void);
 
 // Implementation of Grammar Rules
@@ -422,7 +424,8 @@ static ast_node_t *parse_id_stmt_tail(void) {
 
   } else if (check(TOK_KW_MATCH)) {
     // makeshift solution
-    parse_expr_match_tail();
+    ast_node_t *test_subject = ast_new_int(123, 42);
+    return parse_expr_match_tail(test_subject);
   } else {
     // Id expression or operation tail
     if (parser.current_token.type <= 59 &&
@@ -667,7 +670,7 @@ static ast_node_t *parse_arg_list(void) {
   return arg;
 }
 
-ast_node_t *parse_expression(void) {
+static ast_node_t *parse_expression(void) {
   if (check(TOK_KW_LIST)) {
     parse_list_def();
   } else {
@@ -692,7 +695,8 @@ ast_node_t *parse_expression(void) {
       } else if (check(TOK_KW_IF)) {
         parse_if_statement();
       } else if (check(TOK_KW_MATCH)) {
-        parse_expr_match_tail();
+        ast_node_t *test_subject = ast_new_int(123, 42);
+        return parse_expr_match_tail(test_subject);
       } else if (check_identifier("until") || check_identifier("by") || check_identifier("to")){
         break;
       }
@@ -720,17 +724,201 @@ ast_node_t *parse_expression(void) {
  // parse_expression();
 //}
 
-void parse_expr_match_tail(void) {
-  if (check(TOK_KW_MATCH)) {
-    match(TOK_KW_MATCH);
+static ast_node_t *parse_expr_match_tail(ast_node_t* subject) {
+  int line = current_line; 
+  match(TOK_KW_MATCH);
+  while (check(TOK_NEWLINE)){
+    match(TOK_NEWLINE);
+  }
+  // makeshift
+  match(TOK_INDENT);
+  ast_list_t cases = {0};
+  
+
+  parse_case_list(subject, &cases);
+  
+
+
+  match(TOK_DEDENT);
+  ast_node_t *match_node = ast_new_match(subject, cases, line);
+  if (match_node == NULL) {
+  ast_free(subject);
+  for (int i = 0; i < cases.count; i++) {
+    ast_free(cases.items[i]);
+  }
+  free(cases.items);
+  internal_error();
+  }
+  return match_node;
+
+  // else epsilon
+}
+
+void parse_case_list(ast_node_t *subject, ast_list_t *cases) {
+  
+  if (check(TOK_KW_CASE)) {
+    int line = current_line;
+    match(TOK_KW_CASE);
+    ast_node_t *pattern = parse_model();
+    ast_node_t *guard = NULL;
+    if (check(TOK_KW_IF)) {
+      match(TOK_KW_IF);
+      guard = parse_expression();
+    }
+    match(TOK_ARROW);
+    ast_node_t *body = NULL;
+    if(!check(TOK_NEWLINE)){
+      body = parse_expression();
+    } else{
+      body = parse_block();
+    }
+    ast_node_t *case_node = ast_new_case(pattern, guard, body, line);
+    if (case_node == NULL) {
+      ast_free(pattern);
+      ast_free(guard);
+      ast_free(body);
+      ast_free(subject);
+      for (int i = 0; i < cases->count; i++) {
+        ast_free(cases->items[i]);
+      }
+      free(cases->items);
+      internal_error();
+    }
+    
+    append_node(cases, case_node);
     while (check(TOK_NEWLINE))
       match(TOK_NEWLINE);
-    // makeshift
-    match(TOK_INDENT);
-    parse_case_list();
-    match(TOK_DEDENT);
+    parse_case_list(subject, cases);
   }
   // else epsilon
+  
+}
+
+// Reminder to add class constructor variant
+static ast_node_t *parse_model(void) {
+  int line = current_line;
+  if(check(TOK_UNDERSCORE)){
+    match(TOK_UNDERSCORE);
+    ast_node_t *pattern = ast_new_pat_wildcard(line);
+    if (pattern == NULL) {
+      internal_error();
+    }
+    return pattern;
+  }
+  if(check_literal()){
+    return parse_literals();
+  }
+ if (!check(TOK_ID)) {
+    syntax_error("Invalid pattern in match case");
+  }
+
+  char *name = take_string();
+    if (check(TOK_COLON)) {
+      match(TOK_COLON);
+      match_type();
+      ast_node_t *pattern = ast_new_pat_typed(name, NULL, line);
+      if (pattern == NULL) {
+      free(name);
+      internal_error();
+      }
+      return pattern;
+    } 
+    
+    if (check(TOK_LPAR)) {
+      // class constructor
+      match(TOK_LPAR);
+      ast_list_t bindings = {0};
+      while (!check(TOK_RPAR)) {
+        int binding_line = current_line;
+        char *binding_name = NULL;
+        if (check(TOK_ID)) {
+          binding_name = take_string();
+        } else if (check(TOK_UNDERSCORE)) {
+          match(TOK_UNDERSCORE);
+        } else {
+          free(name);
+          for (int i = 0; i < bindings.count; i++) {
+            ast_free(bindings.items[i]);
+          }
+          free(bindings.items);
+          syntax_error("Expected class-pattern binding");
+        }
+        
+        ast_node_t *binding = ast_new_id(binding_name, binding_line);
+        if (binding == NULL) {
+        free(binding_name);
+        free(name);
+        for (int i = 0; i < bindings.count; i++) {
+          ast_free(bindings.items[i]);
+        }
+        free(bindings.items);
+        internal_error();
+        }
+        append_node(&bindings, binding);
+        if (!check(TOK_COMMA)) {
+        break;
+        }
+        match(TOK_COMMA);
+      }
+      match(TOK_RPAR);
+      ast_node_t *pattern = ast_new_pat_class(name, bindings, line);
+      if (pattern == NULL) {
+      free(name);
+      for (int i = 0; i < bindings.count; i++) {
+        ast_free(bindings.items[i]);
+      }
+      free(bindings.items);
+      internal_error();
+      }
+      return pattern;
+    }
+  free(name);
+  syntax_error("Expected ':' or '(' after match-pattern identifier");
+  return NULL;
+}  
+
+static ast_node_t *parse_literals(void){
+  int line = current_line;
+  
+  if (check(TOK_INT_LIT)) {
+    int64_t value = parser.current_token.int_val;
+    advance();
+    ast_node_t *node = ast_new_int(value, line);
+    if (node == NULL) {
+      internal_error();
+    }
+    return node;
+  }
+
+  if (check(TOK_DOUBLE_LIT)) {
+    double value = parser.current_token.double_val;
+    advance();
+    ast_node_t *node = ast_new_double(value, line);
+    if (node == NULL) {
+      internal_error();
+    }
+    return node;
+  }
+  if (check(TOK_STRING_LIT)) {
+    char *value = take_string();
+    ast_node_t *node = ast_new_string(value, line);
+    if (node == NULL) {
+      free(value);
+      internal_error();
+    }
+    return node;
+  }
+  if (check(TOK_KW_TRUE) || check(TOK_KW_FALSE)) {
+    bool value = check(TOK_KW_TRUE);
+    advance();
+    ast_node_t *node = ast_new_bool(value, line);
+    if (node == NULL) {
+      internal_error();
+    }
+    return node;
+  }
+
+  return NULL;
 }
 
 void parse_list_def(void) {
@@ -763,49 +951,6 @@ void parse_list_next(void) {
   } else {
     parse_expression();
     parse_list_tail();
-  }
-}
-
-void parse_case_list(void) {
-  if (check(TOK_KW_CASE)) {
-    match(TOK_KW_CASE);
-    parse_model();
-    if (check(TOK_KW_IF)) {
-      match(TOK_KW_IF);
-      parse_expression();
-    }
-    match(TOK_ARROW);
-    parse_expression();
-    while (check(TOK_NEWLINE))
-      match(TOK_NEWLINE);
-    parse_case_list();
-  }
-  // else epsilon
-}
-
-// Reminder to add class constructor variant
-void parse_model(void) {
-  if (check_literal()) {
-    match_literal();
-  } else if (check(TOK_UNDERSCORE)) {
-    match(TOK_UNDERSCORE);
-  } else if (check(TOK_ID)) {
-    match(TOK_ID);
-    if (check(TOK_COLON)) {
-      match(TOK_COLON);
-      match_type();
-    } else if (check(TOK_LPAR)) {
-      // class constructor
-      match(TOK_LPAR);
-      while (!check(TOK_RPAR)) {
-        match(TOK_ID);
-        if (!check(TOK_RPAR))
-          match(TOK_COMMA);
-      }
-      match(TOK_RPAR);
-    }
-  } else {
-    syntax_error("Invalid pattern model in match case");
   }
 }
 

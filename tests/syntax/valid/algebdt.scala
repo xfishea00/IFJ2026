@@ -11,6 +11,6 @@ def describe(value: Scalar | Point): String =
     case Point(x, y) => toStr(x) + ":" + toStr(y)
     case _ => "other"
 
-@main def main(): Unit =
+@main def algebdt(): Unit =
   val point = Point(2, 3)
   print(describe(point))
