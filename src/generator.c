@@ -51,7 +51,7 @@ static void generate_output(generator_state_t *state, const char *format, ...) {
   int result = vfprintf(state->output, format, args);
   va_end(args);
 
-  if (result < 0 || fputc('\n', state->output) == EOF) {
+  if (result < 0) {
     state->error = true;
   }
 }
@@ -65,7 +65,7 @@ static void generate_label(generator_state_t *state, const char *label) {
   if (state == NULL) {
     return;
   }
-  generate_output(state, "LABEL %s", label);
+  generate_output(state, "LABEL %s\n", label);
 }
 
 /**
@@ -175,7 +175,7 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
 
   // Generate the main function call
   generate_output(state, "CREATEFRAME\n");
-  generate_output(state, "CALL $%s\n", main_func->func_def.symbol->unique_name);
+  generate_output(state, "CALL $function_%s\n", main_func->func_def.symbol->unique_name);
   generate_output(state, "EXIT int@0\n\n");
 
   if (state->error) {
@@ -227,6 +227,21 @@ static void generate_statement(generator_state_t *state, ast_node_t *node) {
     break;
   case AST_MATCH:
     generate_match(state, node);
+    break;
+  case AST_CALL:
+    generate_function_call(state, node);
+    if(state->error) {
+      return;
+    }
+
+    char temp_name[64];
+    generate_temp_name(state, temp_name, sizeof(temp_name));
+    if(state->error) {
+      return;
+    }
+
+    generate_output(state, "DEFVAR LF@%s\n", temp_name);
+    generate_output(state, "POPS LF@%s\n", temp_name);
     break;
   default:
     state->error = true;
@@ -294,7 +309,7 @@ static void generate_function(generator_state_t *state, ast_node_t *node) {
 
   // Generate the function label
   char function_label[256];
-  int n = snprintf(function_label, sizeof(function_label), "function@%s",
+  int n = snprintf(function_label, sizeof(function_label), "$function_%s",
                    symbol->unique_name);
   if (n < 0 || (size_t)n >= sizeof(function_label)) {
     generate_error(state, "Function label buffer overflow");
@@ -343,7 +358,7 @@ static void generate_function_parameters(generator_state_t *state,
     for (int j = 0; j < params->count; j++) {
       ast_node_t *param = params->items[j];
 
-      if (param == NULL || param->kind != AST_VAR_DEF ||
+      if (param == NULL || param->kind != AST_PARAM ||
           param->param.symbol == NULL ||
           param->param.symbol->unique_name == NULL) {
         state->error = true;
@@ -637,6 +652,55 @@ static void generate_binary_expression(generator_state_t *state,
  * @param node The AST node representing the function call.
  */
 static void generate_function_call(generator_state_t *state, ast_node_t *node) {
+  if(state == NULL || node == NULL || node->kind != AST_CALL) {
+    if (state != NULL) {
+      state->error = true;
+    }
+    return;
+  }
+
+  if(node->call.symbol == NULL) {
+    state->error = true;
+    return;
+  }
+
+  // builtin functions generation
+  if(node->call.symbol->is_builtin) {
+    //TODO: generate builtin functions
+    return;
+  }
+
+  if(node->call.symbol->unique_name == NULL || node->call.symbol->decl == NULL || node->call.symbol->decl->kind != AST_PARAM) {
+    state->error = true;
+    return;
+  }
+
+  // Generate code for each argument in the function call
+  for(int i = 0; i < node->call.arg_list_count; i++){
+    ast_list_t *args = &node->call.arg_lists[i];
+
+    for(int j = 0; j < args->count; j++){
+      ast_node_t *arg = args->items[j];
+
+      if(arg == NULL) {
+        state->error = true;
+        return;
+      }
+
+      generate_expression(state, arg);
+      if(state->error) {
+        return;
+      }
+    }
+  }
+
+  generate_output(state, "CREATEFRAME\n");
+
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "CALL $function_%s\n", node->call.symbol->unique_name);
 }
 
 /**
