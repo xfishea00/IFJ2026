@@ -6,6 +6,7 @@
  */
 
 #include "generator.h"
+#include "type.h"
 
 #include <inttypes.h>
 #include <stdarg.h>
@@ -13,22 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/*
- * ----------------------------------------------------------------
- * GENERATOR STATE
- * ----------------------------------------------------------------
- */
-
-/**
- * @brief State of the code generator.
- */
-typedef struct {
-  FILE *output;
-  unsigned int label_counter;
-  unsigned int temp_counter;
-  bool error;
-} generator_state_t;
 
 /*
  * ----------------------------------------------------------------
@@ -115,7 +100,7 @@ static void generate_label_name(generator_state_t *state, char *buffer,
  * @param error_message The error message to generate.
  */
 static void generate_error(generator_state_t *state,
-                           const char *error_message) {
+                           const char *error_message, ...) {
   if (state == NULL) {
     return;
   }

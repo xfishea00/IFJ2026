@@ -28,7 +28,7 @@ typedef struct {
   bool error;
 } generator_state_t;
 
-static void generate_error(generator_state_t *state, const char *error_message);
+static void generate_error(generator_state_t *state, const char *error_message, ...);
 static void generate_function(generator_state_t *state, ast_node_t *node);
 static void generate_function_parameters(generator_state_t *state, ast_node_t *node);
 static void generate_block(generator_state_t *state, ast_node_t *node);
