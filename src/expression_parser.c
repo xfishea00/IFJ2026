@@ -288,6 +288,11 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
                             b.type == expression.type) {
                             rule = rules[11];
                         }
+                        else if (a.type == STACK_TERMINAL &&
+                            a.terminal == PRE_MINUS &&
+                            b.type == expression.type) {
+                            rule = (rule_t){ .n = -1, .left_side = expression };
+                        }
                         else {
                             return ERR_SYNTAX;
                         }
