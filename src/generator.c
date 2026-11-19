@@ -7,6 +7,7 @@
 
 #include "generator.h"
 #include "type.h"
+#include "symbol.h"
 
 #include <inttypes.h>
 #include <stdarg.h>
@@ -1116,7 +1117,7 @@ static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
   }
 
   if (strcmp(builtin_name, "print") == 0) {
-    generate_print(state);
+    generate_print(state, node);
   } else if (strcmp(builtin_name, "toStr") == 0) {
     generate_toStr(state);
   } else if (strcmp(builtin_name, "toInt") == 0) {
@@ -1142,7 +1143,7 @@ static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
   }
 }
 
-static void generate_print(generator_state_t *state) {
+static void generate_print(generator_state_t *state, ast_node_t *node) {
   if (state == NULL) {
     return;
   }

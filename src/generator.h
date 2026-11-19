@@ -45,7 +45,7 @@ static void generate_if(generator_state_t *state, ast_node_t *node);
 static void generate_while(generator_state_t *state, ast_node_t *node);
 static void generate_string(generator_state_t *state, ast_node_t *node);
 static void generate_builtin_call(generator_state_t *state, ast_node_t *node);
-static void generate_print(generator_state_t *state);
+static void generate_print(generator_state_t *state, ast_node_t *node);
 static void generate_builtin_read(generator_state_t *state, const char *type);
 static void generate_toStr(generator_state_t *state);
 static void generate_toInt(generator_state_t *state);
