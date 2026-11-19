@@ -9,6 +9,7 @@
 #include "scanner.h"
 #include "symtable.h"
 #include "token.h"
+#include "type.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,7 +84,8 @@ void match_literal() {
   }
 }
 
-void match_type() {
+type_t *match_type(void) {
+  type_t *type = type_from_token(peek());
   switch (peek()) {
   case TOK_KW_INT:
   case TOK_KW_DOUBLE:
@@ -105,7 +107,10 @@ void match_type() {
   if (check(TOK_PIPE)) {
     match(TOK_PIPE);
     match_type();
+    type = NULL;
+    // TODO: union types
   }
+  return type;
 }
 
 static void append_node(ast_list_t *list, ast_node_t *node) {
@@ -139,7 +144,7 @@ static ast_node_t *parse_id_stmt_tail(void);
 static ast_node_t *parse_block_statement(void);
 
 static ast_node_t *parse_var_definition(void);
-void parse_expect_type(void);
+type_t *parse_expect_type(void);
 static ast_node_t *parse_return_statement(void);
 
 static ast_node_t * parse_if_statement(void);
@@ -233,11 +238,11 @@ ast_node_t *parse_func_declaration(bool is_main) {
   int param_list_count = 0;
   parse_param_groups(&param_lists, &param_list_count);
   
-  parse_expect_type();
+  type_t *ret_type = parse_expect_type();
   match(TOK_ASSIGN);
   ast_node_t *body = parse_block_statement();
 
-  ast_node_t *function = ast_new_func_def(name, is_main, NULL, param_lists, param_list_count, body, line);
+  ast_node_t *function = ast_new_func_def(name, is_main, ret_type, param_lists, param_list_count, body, line);
   
   //free 
   if (function == NULL) {
@@ -256,12 +261,12 @@ ast_node_t *parse_func_declaration(bool is_main) {
   return function;
 }
 
-void parse_expect_type(void) {
+type_t *parse_expect_type(void) {
   if (check(TOK_COLON)) {
     match(TOK_COLON);
-    match_type();
+    return match_type();
   }
-  // else epsilon
+  return NULL; // type not given
 }
 
 static void parse_param_groups(ast_list_t **param_lists, int *list_count) {
@@ -295,8 +300,8 @@ static ast_node_t *parse_param(void) {
   int line = parser.current_token.line;
   char *name = take_string();
   match(TOK_COLON);
-  match_type();
-  ast_node_t *param = ast_new_param(name, NULL, line);
+  type_t *type = match_type();
+  ast_node_t *param = ast_new_param(name, type, line);
   if (param == NULL) {
     free(name);
     internal_error();
@@ -439,10 +444,10 @@ static ast_node_t *parse_var_definition(void) {
     syntax_error("Expected variable name");
   }
   char *name = take_string();
-  parse_expect_type();
+  type_t *decl_type = parse_expect_type();
   match(TOK_ASSIGN);
   ast_node_t *init = parse_expression();
-  ast_node_t *var = ast_new_var_def(mutable, name, NULL, init, line);
+  ast_node_t *var = ast_new_var_def(mutable, name, decl_type, init, line);
 
   if (var == NULL) {
     free(name);
@@ -810,8 +815,8 @@ static ast_node_t *parse_model(void) {
   char *name = take_string();
     if (check(TOK_COLON)) {
       match(TOK_COLON);
-      match_type();
-      ast_node_t *pattern = ast_new_pat_typed(name, NULL, line);
+      type_t *type = match_type();
+      ast_node_t *pattern = ast_new_pat_typed(name, type, line);
       if (pattern == NULL) {
       free(name);
       internal_error();
