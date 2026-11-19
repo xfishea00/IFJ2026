@@ -9,8 +9,15 @@
 #include "stack.h"
 #include "error.h"
 #include "token.h"
+#include <string.h>
 
 precedence_terminal_t map_token_to_precedence(token_t t) {
+    if (t.type == TOK_ID && t.string_val != NULL &&
+        (strcmp(t.string_val, "to") == 0 ||
+         strcmp(t.string_val, "until") == 0 ||
+         strcmp(t.string_val, "by") == 0)) {
+        return PRE_END;
+    }
     switch (t.type) {
         case TOK_ID:         return PRE_ID;
         case TOK_INT_LIT:    return PRE_ID;
@@ -40,6 +47,14 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
         case TOK_COMMA:      return PRE_END;
         case TOK_COLON:      return PRE_END;
         case TOK_SEMICOLON:  return PRE_END;
+        case TOK_KW_THEN:    return PRE_END;
+        case TOK_KW_DO:      return PRE_END;
+        case TOK_KW_ELSE:    return PRE_END;
+        case TOK_LARROW:     return PRE_END;
+        case TOK_RBRACKET:   return PRE_END;
+        case TOK_LBRACKET:   return PRE_END;
+        case TOK_ARROW:      return PRE_END;
+        case TOK_PIPE:       return PRE_END;
         case TOK_EOF:        return PRE_END;
         default:             return PRE_INVALID;
     }
@@ -100,6 +115,13 @@ bool is_boundary(token_type_t t) {
         case TOK_COMMA:
         case TOK_COLON:
         case TOK_SEMICOLON:
+        case TOK_KW_THEN:
+        case TOK_KW_DO:
+        case TOK_KW_ELSE:
+        case TOK_LARROW:
+        case TOK_RBRACKET:
+        case TOK_ARROW:
+        case TOK_PIPE:
         case TOK_EOF:
             return true;
         default:
@@ -108,9 +130,10 @@ bool is_boundary(token_type_t t) {
 }
 
 bool is_not_expression_end(stack_t s, token_type_t current_token_type) {
-    if (s.elements[s.top - 1].type == STACK_TERMINAL && 
+    if (s.top >= 1 &&
+        s.elements[s.top - 1].type == STACK_TERMINAL &&
         s.elements[s.top - 1].terminal == PRE_END &&
-        s.elements[s.top].type == STACK_EXPRESSION && 
+        s.elements[s.top].type == STACK_EXPRESSION &&
         is_boundary(current_token_type)) {
         return false;
     }
