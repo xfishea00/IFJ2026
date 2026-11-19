@@ -1,7 +1,7 @@
 /*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    generator.h
- * Authors: Jaroslav Baček (xbacekj00)
+ * Authors: Jaroslav Baček (xbacekj00), Maros Magoč (xmagocm00)
  * Brief:   interface of the code generator
  */
 
@@ -65,6 +65,6 @@ static void generate_readDoubleMaybe(generator_state_t *state);
  * @return int 0 on success, 99 on internal error, else error code from the
  * semantic analysis
  */
-int generate_code(/* AST tree */);
+int generate_code(ast_node_t *root);
 
 #endif // GENERATOR_H

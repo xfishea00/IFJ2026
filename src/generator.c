@@ -1,7 +1,7 @@
 /*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    generator.c
- * Authors: Jaroslav Baček (xbacekj00)
+ * Authors: Jaroslav Baček (xbacekj00), Maros Magoč (xmagocm00)
  * Brief:   implementation of the code generator
  */
 
