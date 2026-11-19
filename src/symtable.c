@@ -15,13 +15,13 @@ typedef enum { STATE_FREE, STATE_OCCUPIED, STATE_DELETED } symbol_state_t;
 // symbol structure
 typedef struct {
   char *key;
-  symbol_info_t info;
+  symbol_t *symbol;
   symbol_state_t state;
-} symbol_t;
+} intern_symbol_t;
 
 // symbol table structure
 struct symtable {
-  symbol_t *symbols;
+  intern_symbol_t *symbols;
   size_t size;
   size_t max_len;
 };
@@ -48,7 +48,7 @@ symtable_t *symtable_init(void) {
   symtable->size = 0;
   symtable->max_len = INITIAL_SIZE;
 
-  symtable->symbols = malloc(sizeof(symbol_t) * symtable->max_len);
+  symtable->symbols = malloc(sizeof(intern_symbol_t) * symtable->max_len);
   if (symtable->symbols == NULL) {
     free(symtable);
     return NULL;
@@ -56,6 +56,7 @@ symtable_t *symtable_init(void) {
 
   for (size_t i = 0; i < symtable->max_len; i++) {
     symtable->symbols[i].key = NULL;
+    symtable->symbols[i].symbol = NULL;
     symtable->symbols[i].state = STATE_FREE;
   }
 
@@ -66,13 +67,14 @@ symtable_t *symtable_init(void) {
 static bool symtable_rehash(symtable_t *table) {
   size_t new_len = table->max_len * 2 + 1;
 
-  symbol_t *new_symbols = malloc(sizeof(symbol_t) * new_len);
+  intern_symbol_t *new_symbols = malloc(sizeof(intern_symbol_t) * new_len);
   if (new_symbols == NULL) {
     return false;
   }
 
   for (size_t i = 0; i < new_len; i++) {
     new_symbols[i].key = NULL;
+    new_symbols[i].symbol = NULL;
     new_symbols[i].state = STATE_FREE;
   }
 
@@ -94,9 +96,9 @@ static bool symtable_rehash(symtable_t *table) {
 }
 
 // function to insert a symbol into the table
-bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
-  symbol_info_t *existing_info = symtable_search(table, key);
-  if (existing_info != NULL) {
+bool symtable_insert(symtable_t *table, const char *key, symbol_t *symbol) {
+  symbol_t *existing_symbol = symtable_search(table, key);
+  if (existing_symbol != NULL) {
     return false;
   }
 
@@ -109,11 +111,11 @@ bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
   }
 
   size_t idx = hash(key, table->max_len);
-  symbol_t *first_deleted = NULL;
+  intern_symbol_t *first_deleted = NULL;
 
   // look for a free slot or a deleted slot
   for (size_t i = 0; i < table->max_len; i++) {
-    symbol_t *position = &table->symbols[idx];
+    intern_symbol_t *position = &table->symbols[idx];
 
     if (position->state == STATE_FREE) {
       break;
@@ -129,7 +131,7 @@ bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
   }
 
   // insert the new symbol at found position
-  symbol_t *insert_position;
+  intern_symbol_t *insert_position;
   if (first_deleted != NULL) {
     insert_position = first_deleted;
   } else {
@@ -144,7 +146,7 @@ bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
   strcpy(temp_key, key);
 
   insert_position->key = temp_key;
-  insert_position->info = info;
+  insert_position->symbol = symbol;
   insert_position->state = STATE_OCCUPIED;
   table->size = table->size + 1;
 
@@ -152,17 +154,17 @@ bool symtable_insert(symtable_t *table, const char *key, symbol_info_t info) {
 }
 
 // function to search for a symbol in the table
-symbol_info_t *symtable_search(symtable_t *table, const char *key) {
+symbol_t *symtable_search(symtable_t *table, const char *key) {
   size_t idx = hash(key, table->max_len);
 
   for (size_t i = 0; i < table->max_len; i++) {
-    symbol_t *position = &table->symbols[idx];
+    intern_symbol_t *position = &table->symbols[idx];
 
     if (position->state == STATE_FREE) {
       return NULL;
     }
     if (position->state == STATE_OCCUPIED && strcmp(position->key, key) == 0) {
-      return &position->info;
+      return position->symbol;
     }
     idx = (idx + 1) % table->max_len;
   }
@@ -174,15 +176,15 @@ bool symtable_delete(symtable_t *table, const char *key) {
   size_t idx = hash(key, table->max_len);
 
   for (size_t i = 0; i < table->max_len; i++) {
-    symbol_t *position = &table->symbols[idx];
+    intern_symbol_t *position = &table->symbols[idx];
 
     if (position->state == STATE_FREE) {
       return false;
     }
     if (position->state == STATE_OCCUPIED && strcmp(position->key, key) == 0) {
       free(position->key);
-      free(position->info.parameter_types);
       position->key = NULL;
+      position->symbol = NULL;
       position->state = STATE_DELETED;
       table->size--;
       return true;
@@ -201,7 +203,6 @@ void symtable_free(symtable_t *table) {
   for (size_t i = 0; i < table->max_len; i++) {
     if (table->symbols[i].state == STATE_OCCUPIED) {
       free(table->symbols[i].key);
-      free(table->symbols[i].info.parameter_types);
     }
   }
   free(table->symbols);
