@@ -22,14 +22,14 @@ int main(void) {
   // TODO: parser interface
   ast_node_t *root = parse();
 
-  /*
+  
   rc = semantic_analyze(root); // 3-10, 99
   if (rc == ERR_OK) {
     // TODO: rc = generate_code(root); - IFJcode26 to stdout
   }
-  */
+  
   ast_free(root);
-  //symbols_free_all(); // symbols live until the generator is done
+  symbols_free_all(); // symbols live until the generator is done
   scanner_free();
   return rc;
 }

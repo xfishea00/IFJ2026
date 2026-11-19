@@ -545,13 +545,17 @@ static ast_node_t *parse_if_statement(void) {
 }
 
 ast_node_t *parse_else_tail(void) {
-  ast_node_t *node;
-  if (check(TOK_KW_IF)) {
-    node = parse_if_statement();
-  } else {
-    node = parse_block_statement();
-  }
-  return node;
+    ast_node_t *node;
+    if (check(TOK_KW_IF)) {
+      node = ast_new_block(current_line);
+      if (node == NULL) {
+        internal_error();
+      }
+      append_node(&node->block.stmts, parse_if_statement());
+    } else {
+      node = parse_block_statement();
+    }
+    return node;
 }
 
 ast_node_t *parse_while_statement(void) {
@@ -683,7 +687,9 @@ ast_node_t *parse_gen_source(int line, char *var_name) {
       free(var_name);
       internal_error();
     }  
-  }
+  }  else {
+      return from;
+    }
   return range;
 }
 
