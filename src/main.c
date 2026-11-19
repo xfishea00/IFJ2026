@@ -6,7 +6,7 @@
 
 #include "ast.h"
 #include "error.h"
-// #include "generator.h"
+#include "generator.h"
 #include "parser.h"
 #include "scanner.h"
 #include "semantic.h"
@@ -21,15 +21,17 @@ int main(void) {
 
   // TODO: parser interface
   ast_node_t *root = parse();
-
+  //ast_print(root);
   
   rc = semantic_analyze(root); // 3-10, 99
   if (rc == ERR_OK) {
     // TODO: rc = generate_code(root); - IFJcode26 to stdout
   }
   
+  generate_code(root);
   ast_free(root);
   symbols_free_all(); // symbols live until the generator is done
   scanner_free();
+  
   return rc;
 }
