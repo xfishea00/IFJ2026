@@ -428,12 +428,18 @@ static ast_node_t *parse_id_stmt_tail(void) {
     free(list);
     internal_error();
     }
-   return call;
+    if (check(TOK_KW_MATCH)) {
+      return parse_expr_match_tail(call);
+    }
+    return call;
 
   } else if (check(TOK_KW_MATCH)) {
-    // makeshift solution
-    ast_node_t *test_subject = ast_new_int(123, 42);
-    return parse_expr_match_tail(test_subject);
+    ast_node_t *subject = ast_new_id(name, line);
+    if (subject == NULL) {
+      free(name);
+      internal_error();
+    }
+    return parse_expr_match_tail(subject);
   } else {
      ast_node_t *left = ast_new_id(name, line);
      if (left == NULL) {
@@ -990,8 +996,7 @@ static ast_node_t *parse_expression(void) {
   int line = current_line;
 
   if (check(TOK_KW_MATCH)) {
-    ast_node_t *subject = ast_new_int(123, line);
-    return subject == NULL ? NULL : parse_expr_match_tail(subject);
+    syntax_error("Match expression requires a subject");
   }
   if (check(TOK_KW_IF)) {
     return parse_if_statement();
@@ -1003,7 +1008,11 @@ static ast_node_t *parse_expression(void) {
     if (left == NULL) {
       internal_error();
     }
-    return parse_expression_operators(left, 1);
+    ast_node_t *expression = parse_expression_operators(left, 1);
+    if (check(TOK_KW_MATCH)) {
+      return parse_expr_match_tail(expression);
+    }
+    return expression;
   }
 
   int rc = parse_non_id_expression(&parser.current_token,
