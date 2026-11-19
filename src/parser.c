@@ -321,7 +321,12 @@ ast_node_t * parse_block_statement(void) {
   if (check(TOK_NEWLINE)) {
     return parse_block();
   } else {
-    return parse_statement();
+    ast_node_t *block = ast_new_block(current_line);
+      if (block == NULL) {
+        internal_error();
+      }
+      append_node(&block->block.stmts, parse_statement());
+      return block;
   }
 }
 
