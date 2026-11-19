@@ -627,6 +627,10 @@ static void generate_unary_expression(generator_state_t *state,
       case T_DOUBLE:
         generate_output(state,  "PUSHS float@-0x1p+0\n"
                                 "MULS\n");
+        break;
+      default:
+        state->error = true;
+        break;
     }
     break;
   default:
@@ -651,6 +655,11 @@ static void generate_binary_expression(generator_state_t *state,
   }
 
   generate_expression(state, node->binary.left);
+
+  if (state->error) {
+    return;
+  }
+
   generate_expression(state, node->binary.right);
 
   if (state->error) {
@@ -703,7 +712,7 @@ static void generate_binary_expression(generator_state_t *state,
                               "DEFVAR LF@temp2\n"
                               "POPS LF@temp0\n"
                               "POPS LF@temp1\n"
-                              "CONCAT LF@temp2 LF@temp0 LF@temp1\n"
+                              "CONCAT LF@temp2 LF@temp1 LF@temp0\n"
                               "PUSHS LF@temp2\n");
       break;
     default:
