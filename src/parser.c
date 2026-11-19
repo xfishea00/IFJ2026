@@ -144,11 +144,9 @@ static ast_node_t *parse_return_statement(void);
 
 static ast_node_t * parse_if_statement(void);
 static ast_node_t * parse_else_tail(void);
-void parse_else_continuation(void);
 
 static ast_node_t *parse_while_statement(void);
 static ast_node_t *parse_for_loop(void);
-void parse_for_body(void);
 static ast_node_t * parse_for_inline(int line);
 static ast_node_t * parse_for_multiline(int line);
 void parse_inline_guards(ast_list_t *list);
@@ -158,17 +156,14 @@ static ast_node_t *parse_gen_source(int line, char *var_name);
 static void parse_param_groups(ast_list_t **param_lists, int *list_count);
 static ast_node_t * parse_param(void);
 
-void parse_func_call(void);
 void parse_arg_groups(ast_list_t **lists, int *list_count);
 static ast_node_t *parse_arg_list(void);
-void parse_arg_tail(void);
-void parse_arg_next(void);
 
 static ast_node_t* parse_expression(void);
 //void parse_non_id_expression(void);
 static ast_node_t *parse_expr_match_tail(ast_node_t* subject);
 static ast_node_t *parse_literals(void);
-void parse_list_def(void);
+static ast_node_t *parse_list_def(void);
 void parse_list_elements(void);
 void parse_list_tail(void);
 void parse_list_next(void);
@@ -447,7 +442,7 @@ static ast_node_t *parse_var_definition(void) {
   parse_expect_type();
   match(TOK_ASSIGN);
   ast_node_t *init = parse_expression();
-  ast_node_t *var = ast_new_var_def(mutable, name, NULL, NULL, line);
+  ast_node_t *var = ast_new_var_def(mutable, name, NULL, init, line);
 
   if (var == NULL) {
     free(name);
@@ -672,7 +667,7 @@ static ast_node_t *parse_arg_list(void) {
 
 static ast_node_t *parse_expression(void) {
   if (check(TOK_KW_LIST)) {
-    parse_list_def();
+    return parse_list_def();
   } else {
     // filters out expressions for testing purposes
     int lpar_cnt = 0;
@@ -699,7 +694,7 @@ static ast_node_t *parse_expression(void) {
         return parse_expr_match_tail(test_subject);
       } else if (check_identifier("until") || check_identifier("by") || check_identifier("to")){
         break;
-      }
+      } 
       advance();
     }
     // parse_non_id_expression();
@@ -921,13 +916,34 @@ static ast_node_t *parse_literals(void){
   return NULL;
 }
 
-void parse_list_def(void) {
+static ast_node_t *parse_list_def(void) {
+  int line = current_line;
   match(TOK_KW_LIST);
   match(TOK_LPAR);
-  parse_list_elements();
+  ast_list_t owned_items = {0};
+  while(!check(TOK_RPAR)){
+    if(check_literal()){
+      ast_list_append(&owned_items, parse_literals());
+    }else if(check(TOK_ID)){
+      ast_list_append(&owned_items, ast_new_id(take_string(), line));
+    }else{
+      match(TOK_COMMA);
+    }
+  }
   match(TOK_RPAR);
+
+  ast_node_t *list = ast_new_list_lit(owned_items, line);
+  if (list == NULL) {
+    for (int i = 0; i < owned_items.count; i++) {
+      ast_free(owned_items.items[i]);
+    }
+    free(owned_items.items);
+    internal_error();
+  }
+  return list;
 }
 
+/*
 void parse_list_elements(void) {
   if (check(TOK_RPAR)) {
     return; // epsilon
@@ -953,7 +969,7 @@ void parse_list_next(void) {
     parse_list_tail();
   }
 }
-
+*/
 ast_node_t *parse_class(void) {
   int line = current_line;
   match(TOK_KW_CASE);
