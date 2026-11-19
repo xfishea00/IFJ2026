@@ -666,7 +666,7 @@ static void generate_function_call(generator_state_t *state, ast_node_t *node) {
 
   // builtin functions generation
   if(node->call.symbol->is_builtin) {
-    //TODO: generate builtin functions
+    generate_builtin_call(state, node);
     return;
   }
 
@@ -973,6 +973,606 @@ static void generate_string(generator_state_t *state, ast_node_t *node) {
     return;
   }
 }
+
+static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
+  if(state == NULL || node == NULL || node->kind != AST_CALL || node->call.symbol == NULL) {
+    if (state != NULL) {
+      state->error = true;
+    }
+    return;
+  }
+  const char *builtin_name = node->call.symbol->name;
+
+  if(strcmp(builtin_name, "readInt") == 0) {
+    generate_builtin_read(state, "int");
+    return;
+  } 
+  if(strcmp(builtin_name, "readDouble") == 0) {
+    generate_builtin_read(state, "float");
+    return;
+  }
+  if(strcmp(builtin_name, "readLine") == 0) {
+    generate_builtin_read(state, "string");
+    return;
+  } 
+  
+    //builtin functions with 1 argument call generate_expression before they are called
+  if(strcmp(builtin_name, "print") == 0 ||
+    strcmp(builtin_name, "toStr") == 0 ||
+    strcmp(builtin_name, "toInt") == 0 ||
+    strcmp(builtin_name, "strLength") == 0 ||
+    strcmp(builtin_name, "chr") == 0) {
+
+      generate_expression(state, node->call.arg_lists[0].items[0]);
+      if(state->error) {
+        return;
+      }
+    }
+
+  if(strcmp(builtin_name, "ord") == 0) {
+    generate_expression(state, node->call.arg_lists[0].items[0]);
+      if(state->error) {
+        return;
+      }
+    generate_expression(state, node->call.arg_lists[0].items[1]);
+      if(state->error) {
+        return;
+      }
+  }
+
+  if(strcmp(builtin_name, "subStr") == 0) {
+    generate_expression(state, node->call.arg_lists[0].items[0]);
+      if(state->error) {
+        return;
+      }
+    generate_expression(state, node->call.arg_lists[0].items[1]);
+      if(state->error) {
+        return;
+      }
+    generate_expression(state, node->call.arg_lists[0].items[2]);
+      if(state->error) {
+        return;
+      }
+  }
+
+  if(strcmp(builtin_name, "print") == 0) {
+    generate_print(state);
+  } else if(strcmp(builtin_name, "toStr") == 0) {
+    generate_toStr(state);
+  } else if(strcmp(builtin_name, "toInt") == 0) {
+    generate_toInt(state);
+  } else if(strcmp(builtin_name, "strLength") == 0) {
+    generate_strLength(state);
+  } else if(strcmp(builtin_name, "subStr") == 0) {
+    generate_subStr(state);
+  } else if(strcmp(builtin_name, "ord") == 0) {
+    generate_ord(state);
+  } else if(strcmp(builtin_name, "chr") == 0) {
+    generate_chr(state);
+  } else if(strcmp(builtin_name, "readBoolean") == 0) {
+    generate_readBoolean(state);
+  } else if(strcmp(builtin_name, "readIntMaybe") == 0) {
+    generate_readIntMaybe(state);
+  } else if(strcmp(builtin_name, "readDoubleMaybe") == 0) {
+    generate_readDoubleMaybe(state);
+  } else {
+    state->error = true;
+    generate_error(state, "Unknown builtin function: %s", builtin_name);
+    return;
+  }
+}
+
+static void generate_print(generator_state_t *state) {
+  if(state == NULL) {
+    return;
+  }
+  
+  generate_expression(state, node->call.arg_lists[0].items[0]);
+  if(state->error) {
+    return;
+  }
+
+  char temp_name[256];
+  generate_temp_name(state, temp_name, sizeof(temp_name));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", temp_name);
+  generate_output(state, "POPS LF@%s\n", temp_name);
+  generate_output(state, "WRITE LF@%s\n", temp_name);
+
+  generate_output(state, "PUSHS nil@nil\n");
+}
+
+static void generate_builtin_read(generator_state_t *state, const char *type){
+    if(state == NULL || type == NULL) {
+      if (state != NULL) {
+        state->error = true;
+      }
+      return;
+    }
+  
+    char temp_name[256];
+    generate_temp_name(state, temp_name, sizeof(temp_name));
+    if(state->error) {
+      return;
+    }
+  
+    generate_output(state, "DEFVAR LF@%s\n", temp_name);
+    generate_output(state, "READ LF@%s %s\n", temp_name, type);
+    generate_output(state, "PUSHS LF@%s\n", temp_name);
+}
+
+static void generate_toStr(generator_state_t *state) {
+  if(state == NULL) {
+    return;
+  }
+
+  char value[256];
+  char type[256];
+  char result[256];
+
+  char label_string[256];
+  char label_bool[256];
+  char label_int[256];
+  char label_float[256];
+  char label_end[256];
+  char label_unit[256];
+  char label_error[256];
+
+  generate_temp_name(state, value, sizeof(value));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, type, sizeof(type));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, result, sizeof(result));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_string, sizeof(label_string));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_bool, sizeof(label_bool));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_int, sizeof(label_int));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_float, sizeof(label_float));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_end, sizeof(label_end));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_unit, sizeof(label_unit));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_error, sizeof(label_error));
+  if(state->error) {
+    return;
+  }
+
+  // declare variables for value and type
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "DEFVAR LF@%s\n", type);
+  generate_output(state, "DEFVAR LF@%s\n", result);
+  generate_output(state, "POPS LF@%s\n", value);
+  generate_output(state, "TYPE LF@%s LF@%s\n", type, value);
+
+  generate_output(state, "JUMPIFEQ %s LF@%s string@string\n", label_string, type);
+  generate_output(state, "JUMPIFEQ %s LF@%s string@bool\n", label_bool, type);
+  generate_output(state, "JUMPIFEQ %s LF@%s string@int\n", label_int, type);
+  generate_output(state, "JUMPIFEQ %s LF@%s string@float\n", label_float, type);
+  generate_output(state, "JUMPIFEQ %s LF@%s string@\n", label_unit, type);
+
+  generate_output(state, "JUMP %s\n", label_error);
+
+  // generate code for string
+  generate_output(state, "LABEL %s\n", label_string);
+  generate_output(state, "PUSHS LF@%s\n", value);
+  generate_output(state, "JUMP %s\n", label_end);
+
+  // generate code for bool
+  char bool_true[256];
+  char bool_false[256];
+
+  generate_output(state, "LABEL %s\n", label_bool);
+
+  generate_temp_name(state, bool_true, sizeof(bool_true));
+  if(state->error) {
+    return;
+  }
+
+  generate_temp_name(state, bool_false, sizeof(bool_false));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", bool_true, value);
+  generate_output(state, "JUMP %s\n", bool_false);
+
+  generate_output(state, "LABEL %s\n", bool_true);
+  generate_output(state, "PUSHS string@true\n");
+  generate_output(state, "JUMP %s\n", label_end);
+
+  generate_output(state, "LABEL %s\n", bool_false);
+  generate_output(state, "PUSHS string@false\n");
+  generate_output(state, "JUMP %s\n", label_end);
+
+  // generate code for int
+  generate_output(state, "LABEL %s\n", label_int);
+  generate_output(state, "INT2STR LF@%s LF@%s\n", result, value);
+  generate_output(state, "PUSHS LF@%s\n", result);
+  generate_output(state, "JUMP %s\n", label_end);
+
+  // generate code for float
+  generate_output(state, "LABEL %s\n", label_float);
+  generate_output(state, "FLOAT2STR LF@%s LF@%s\n", result, value);
+  generate_output(state, "PUSHS LF@%s\n", result);
+  generate_output(state, "JUMP %s\n", label_end);
+
+  // generate end label
+  generate_output(state, "LABEL %s\n", label_end);
+
+  // generate code for unit
+  generate_output(state, "LABEL %s\n", label_unit);
+  generate_output(state, "PUSHS string@()\n");
+  generate_output(state, "JUMP %s\n", label_end);
+
+  // generate code for error
+  generate_output(state, "LABEL %s\n", label_error);
+  generate_error(state, "EXIT int@40\n");
+
+  //TODO: implement toStr for other types (lists,...)
+}
+
+static void generate_toInt(generator_state_t *state) {
+    if(state == NULL) {
+    return;
+  }
+
+  char temp_name[256];
+  generate_temp_name(state, temp_name, sizeof(temp_name));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", temp_name);
+  generate_output(state, "POPS LF@%s\n", temp_name);
+  generate_output(state, "FLOAT2INT LF@%s LF@%s\n", temp_name, temp_name);
+  generate_output(state, "PUSHS LF@%s\n", temp_name);
+}
+
+static void generate_strLength(generator_state_t *state) {
+  if(state == NULL) {
+    return;
+  }
+
+  char value[256];
+  char length[256];
+
+  generate_temp_name(state, value, sizeof(value));
+  if(state->error) {
+    return;
+  }
+
+  generate_temp_name(state, length, sizeof(length));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "DEFVAR LF@%s\n", length);
+
+  generate_output(state, "POPS LF@%s\n", value);
+  generate_output(state, "STRLEN LF@%s LF@%s\n", length, value);
+  generate_output(state, "PUSHS LF@%s\n", length);
+}
+
+static void generate_subStr(generator_state_t *state) {
+  if(state == NULL) {
+    return;
+  }
+
+  char value[256];
+  char start[256];
+  char length[256];
+  char end[256];
+  char index[256];
+  char result[256];
+  char condition[256];
+  char character[256];
+  char character_code[256];
+
+  char label_loop[256];
+  char label_end[256];
+  char label_error[256];
+  char label_return[256];
+
+  generate_temp_name(state, value, sizeof(value));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, start, sizeof(start));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, length, sizeof(length));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, end, sizeof(end));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, index, sizeof(index));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, result, sizeof(result));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, condition, sizeof(condition));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, character, sizeof(character));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, character_code, sizeof(character_code));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_loop, sizeof(label_loop));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_end, sizeof(label_end));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_error, sizeof(label_error));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_return, sizeof(label_return));
+  if(state->error) {
+    return;
+  }
+
+  //declare variables
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "DEFVAR LF@%s\n", start);
+  generate_output(state, "DEFVAR LF@%s\n", length);
+  generate_output(state, "DEFVAR LF@%s\n", end);
+  generate_output(state, "DEFVAR LF@%s\n", index);
+  generate_output(state, "DEFVAR LF@%s\n", result);
+  generate_output(state, "DEFVAR LF@%s\n", condition);
+  generate_output(state, "DEFVAR LF@%s\n", character);
+  generate_output(state, "DEFVAR LF@%s\n", character_code);
+
+  // pop arguments from the stack
+  generate_output(state, "POPS LF@%s\n", end);
+  generate_output(state, "POPS LF@%s\n", start);
+  generate_output(state, "POPS LF@%s\n", value);
+
+  // get the length of the string
+  generate_output(state, "STRLEN LF@%s LF@%s\n", length, value);
+
+  //start < 0
+  generate_output(state, "LT LF@%s LF@%s int@0\n", condition, start);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //end < 0
+  generate_output(state, "LT LF@%s LF@%s int@0\n", condition, end);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //start >= length
+  generate_output(state, "LT LF@%s LF@%s LF@%s\n", condition, start, length);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@false\n", label_error, condition);
+
+  //start > end
+  generate_output(state, "GT LF@%s LF@%s LF@%s\n", condition, start, end);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //end > length
+  generate_output(state, "GT LF@%s LF@%s LF@%s\n", condition, end, length);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //init result, index
+  generate_output(state, "MOVE LF@%s string@\n", result);
+  generate_output(state, "MOVE LF@%s LF@%s\n", index, start);
+
+  //loop
+  generate_output(state, "LABEL %s\n", label_loop);
+
+  //stop if index >= end
+  generate_output(state, "LT LF@%s LF@%s LF@%s\n", condition, index, end);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@false\n", label_end, condition);
+
+  //get char on index
+  generate_output(state, "STRI2INT LF@%s LF@%s LF@%s\n", character_code, value, index);
+  generate_output(state, "INT2CHAR LF@%s LF@%s\n", character, character_code);
+
+  //concat char to result
+  generate_output(state, "CONCAT LF@%s LF@%s LF@%s\n", result, result, character);
+
+  //index++
+  generate_output(state, "ADD LF@%s LF@%s int@1\n", index, index);
+
+  generate_output(state, "JUMP %s\n", label_loop);
+
+  //end of loop
+  generate_output(state, "LABEL %s\n", label_end);
+  generate_output(state, "PUSHS LF@%s\n", result);
+  generate_output(state, "JUMP %s\n", label_return);
+
+  //exit 40
+  generate_output(state, "LABEL %s\n", label_error);
+  generate_output(state, "EXIT int@40\n");
+
+  //return
+  generate_output(state, "LABEL %s\n", label_return);
+}
+
+static void generate_ord(generator_state_t *state) {
+  if(state == NULL){
+    return;
+  }
+
+  char value[256];
+  char index[256];
+  char length[256];
+  char result[256];
+  char condition[256];
+
+  char label_error[256];
+  char label_end[256];
+
+  generate_temp_name(state, value, sizeof(value));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, index, sizeof(index));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, length, sizeof(length));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, result, sizeof(result));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, condition, sizeof(condition));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_error, sizeof(label_error));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_end, sizeof(label_end));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "DEFVAR LF@%s\n", index);
+  generate_output(state, "DEFVAR LF@%s\n", length);
+  generate_output(state, "DEFVAR LF@%s\n", result);
+  generate_output(state, "DEFVAR LF@%s\n", condition);
+
+  generate_output(state, "POPS LF@%s\n", index);
+  generate_output(state, "POPS LF@%s\n", value);
+
+  //get string length
+  generate_output(state, "STRLEN LF@%s LF@%s\n", length, value);
+
+  //check empty string
+  generate_output(state, "JUMPIFEQ %s LF@%s int@0\n", label_error, length);
+
+  //index < 0
+  generate_output(state, "LT LF@%s LF@%s int@0\n", condition, index);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //index >= length
+  generate_output(state, "LT LF@%s LF@%s LF@%s\n", condition, index, length);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@false\n", label_error, condition);
+
+  //get ascii code
+  generate_output(state, "STRI2INT LF@%s LF@%s LF@%s\n", result, value, index);
+
+  generate_output(state, "JUMP %s\n", label_end);
+
+  //invalid index or empty string
+  generate_output(state, "LABEL %s\n", label_error);
+  generate_output(state, "MOVE LF@%s int@-1\n", result);
+
+  //return
+  generate_output(state, "LABEL %s\n", label_end);
+  generate_output(state, "PUSHS LF@%s\n", result);
+}
+
+static void generate_chr(generator_state_t *state) {
+  if(state == NULL){
+    return;
+  }
+
+  char value[256];
+  char result[256];
+  char condition[256];
+  char label_error[256];
+  char label_end[256];
+
+  generate_temp_name(state, value, sizeof(value));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, result, sizeof(result));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, condition, sizeof(condition));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_error, sizeof(label_error));
+  if(state->error) {
+    return;
+  }
+  generate_temp_name(state, label_end, sizeof(label_end));
+  if(state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "DEFVAR LF@%s\n", result);
+  generate_output(state, "DEFVAR LF@%s\n", condition);
+
+  generate_output(state, "POPS LF@%s\n", value);
+
+  //value < 0
+  generate_output(state, "LT LF@%s LF@%s int@0\n", condition, value);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //value > 127
+  generate_output(state, "GT LF@%s LF@%s int@127\n", condition, value);
+  generate_output(state, "JUMPIFEQ %s LF@%s bool@true\n", label_error, condition);
+
+  //int to char
+  generate_output(state, "INT2CHAR LF@%s LF@%s\n", result, value);
+
+  //result
+  generate_output(state, "PUSHS LF@%s\n", result);
+  generate_output(state, "JUMP %s\n", label_end);
+
+  //exit 40
+  generate_output(state, "LABEL %s\n", label_error);
+  generate_output(state, "EXIT int@40\n");
+
+  generate_output(state, "LABEL %s\n", label_end);
+}
+
+//TODO: implement the additional functions
+static void generate_readBoolean(generator_state_t *state) {}
+
+static void generate_readIntMaybe(generator_state_t *state) {}
+
+static void generate_readDoubleMaybe(generator_state_t *state) {}
 
 /*
  * ----------------------------------------------------------------
