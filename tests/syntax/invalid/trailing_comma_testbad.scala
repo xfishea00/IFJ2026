@@ -109,7 +109,7 @@ def curriedCalc(
 // ============================================================================
 
 // Invalid 1: Trailing comma on the SAME line as ')' (no newline between ',' and ')')
-// def badParam(a: Int,): Int = a
+def badParam(a: Int,): Int = a
 
 // Invalid 2: Trailing comma in an EMPTY parameter list
 // def emptyParamComma(,): Unit = ()
