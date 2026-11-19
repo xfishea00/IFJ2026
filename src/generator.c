@@ -615,7 +615,19 @@ static void generate_unary_expression(generator_state_t *state,
     generate_output(state, "NOTS\n");
     break;
   case OP_NEG:
-    // TODO: Implement negation
+    if (node->unary.operand->type == NULL) {
+      state->error = true;
+      return;
+    }
+    switch (node->unary.operand->type->kind) {
+      case T_INT:
+        generate_output(state,  "PUSHS int@-1\n"
+                                "MULS\n");
+        break;
+      case T_DOUBLE:
+        generate_output(state,  "PUSHS float@-0x1p+0\n"
+                                "MULS\n");
+    }
     break;
   default:
     state->error = true;
@@ -629,7 +641,76 @@ static void generate_unary_expression(generator_state_t *state,
  * @param node The AST node representing the binary expression.
  */
 static void generate_binary_expression(generator_state_t *state,
-                                       ast_node_t *node) {}
+                                       ast_node_t *node) {
+  if (state == NULL || node == NULL || node->kind != AST_BINARY ||
+      node->binary.left == NULL || node->binary.right == NULL) {
+      if (state != NULL) {
+        state->error = true;
+      }
+      return;
+  }
+
+  generate_expression(state, node->binary.left);
+  generate_expression(state, node->binary.right);
+
+  if (state->error) {
+    return;
+  }
+
+  switch (node->binary.op) {
+    case OP_ADD:
+      generate_output(state, "ADDS\n");
+      break;
+    case OP_SUB:
+      generate_output(state, "SUBS\n");
+      break;
+    case OP_MUL:
+      generate_output(state, "MULS\n");
+      break;
+    case OP_DIV:
+      generate_output(state, "DIVS\n");
+      break;
+    case OP_LT:
+      generate_output(state, "LTS\n");
+      break;
+    case OP_GT:
+      generate_output(state, "GTS\n");
+      break;
+    case OP_LE:
+      generate_output(state,  "GTS\n"
+                              "NOTS\n");
+      break;
+    case OP_GE:
+      generate_output(state,  "LTS\n"
+                              "NOTS\n");
+      break;
+    case OP_EQ:
+      generate_output(state, "EQS\n");
+      break;
+    case OP_NEQ:
+      generate_output(state,  "EQS\n"
+                              "NOTS\n");
+      break;
+    case OP_AND:
+      generate_output(state, "ANDS\n");
+      break;
+    case OP_OR:
+      generate_output(state, "ORS\n");
+      break;
+    case OP_CONCAT:
+      generate_output(state,  "DEFVAR LF@temp0\n"
+                              "DEFVAR LF@temp1\n"
+                              "DEFVAR LF@temp2\n"
+                              "POPS LF@temp0\n"
+                              "POPS LF@temp1\n"
+                              "CONCAT LF@temp2 LF@temp0 LF@temp1\n"
+                              "PUSHS LF@temp2\n");
+      break;
+    default:
+      state->error = true;
+      break;
+  }
+}
 
 /**
  * @brief Generates a function call from the AST.
