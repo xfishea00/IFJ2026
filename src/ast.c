@@ -6,6 +6,8 @@
  */
 
 #include "ast.h"
+#include "type.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -107,9 +109,9 @@ ast_node_t *ast_new_return(ast_node_t *value, int line) {
 ast_node_t *ast_new_int(int64_t value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
-    node->literal.kind = AST_LITERAL_INT;
+    node->literal.kind = LIT_INT;
     node->literal.int_val = value;
-    // TODO: node->type = Int base type
+    node->type = type_int();
   }
   return node;
 }
@@ -117,9 +119,9 @@ ast_node_t *ast_new_int(int64_t value, int line) {
 ast_node_t *ast_new_double(double value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
-    node->literal.kind = AST_LITERAL_DOUBLE;
+    node->literal.kind = LIT_DOUBLE;
     node->literal.double_val = value;
-    // TODO: node->type = Double base type
+    node->type = type_double();
   }
   return node;
 }
@@ -127,9 +129,9 @@ ast_node_t *ast_new_double(double value, int line) {
 ast_node_t *ast_new_string(char *value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
-    node->literal.kind = AST_LITERAL_STRING;
+    node->literal.kind = LIT_STRING;
     node->literal.string_val = value;
-    // TODO: node->type = String base type
+    node->type = type_string();
   }
   return node;
 }
@@ -137,9 +139,9 @@ ast_node_t *ast_new_string(char *value, int line) {
 ast_node_t *ast_new_bool(bool value, int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
-    node->literal.kind = AST_LITERAL_BOOL;
+    node->literal.kind = LIT_BOOL;
     node->literal.bool_val = value;
-    // TODO: node->type = Boolean base type
+    node->type = type_bool();
   }
   return node;
 }
@@ -147,8 +149,8 @@ ast_node_t *ast_new_bool(bool value, int line) {
 ast_node_t *ast_new_unit(int line) {
   ast_node_t *node = node_new(AST_LITERAL, line);
   if (node != NULL) {
-    node->literal.kind = AST_LITERAL_UNIT;
-    // TODO: node->type = Unit base type
+    node->literal.kind = LIT_UNIT;
+    node->type = type_unit();
   }
   return node;
 }
@@ -351,6 +353,7 @@ static void list_free(ast_list_t *list) {
   free(list->items);
 }
 
+// types and symbols are not freed here
 void ast_free(ast_node_t *node) {
   if (node == NULL) {
     return;
@@ -623,23 +626,23 @@ static void print_node(const ast_node_t *node, int depth, const char *label) {
     break;
   case AST_LITERAL:
     switch (node->literal.kind) {
-    case AST_LITERAL_INT:
+    case LIT_INT:
       printf("Integer %lld (line %d)\n", (long long)node->literal.int_val,
              node->line);
       break;
-    case AST_LITERAL_DOUBLE:
+    case LIT_DOUBLE:
       printf("Double %g (line %d)\n", node->literal.double_val, node->line);
       break;
-    case AST_LITERAL_STRING:
+    case LIT_STRING:
       printf("String ");
       print_string(node->literal.string_val);
       printf(" (line %d)\n", node->line);
       break;
-    case AST_LITERAL_BOOL:
+    case LIT_BOOL:
       printf("Boolean %s (line %d)\n",
              node->literal.bool_val ? "true" : "false", node->line);
       break;
-    case AST_LITERAL_UNIT:
+    case LIT_UNIT:
       printf("Unit (line %d)\n", node->line);
       break;
     }
