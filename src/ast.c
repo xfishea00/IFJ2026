@@ -500,6 +500,33 @@ static void print_indent(int depth) {
   }
 }
 
+static void print_basic_type(const type_t *type) {
+  if (type == NULL) {
+    fputs("<inferred>", stdout);
+    return;
+  }
+  switch (type->kind) {
+  case T_INT:
+    fputs("Int", stdout);
+    break;
+  case T_DOUBLE:
+    fputs("Double", stdout);
+    break;
+  case T_STRING:
+    fputs("String", stdout);
+    break;
+  case T_BOOL:
+    fputs("Boolean", stdout);
+    break;
+  case T_UNIT:
+    fputs("Unit", stdout);
+    break;
+  default:
+    fputs("<non-basic>", stdout);
+    break;
+  }
+}
+
 static const char *operator_name(ast_op_t op) {
   switch (op) {
   case OP_ADD:
@@ -580,8 +607,13 @@ static void print_node(const ast_node_t *node, int depth, const char *label) {
     }
     break;
   case AST_FUNC_DEF:
-    printf("Function %s%s (line %d)\n", node->func_def.name,
-           node->func_def.is_main ? " [main]" : "", node->line);
+    printf("Function %s%s", node->func_def.name,
+           node->func_def.is_main ? " [main]" : "");
+    if (node->func_def.ret_type != NULL) {
+      fputs(" -> ", stdout);
+      print_basic_type(node->func_def.ret_type);
+    }
+    printf(" (line %d)\n", node->line);
     for (int i = 0; i < node->func_def.param_list_count; i++) {
       print_indent(depth + 1);
       printf("Parameters (group %d)\n", i + 1);
@@ -592,7 +624,9 @@ static void print_node(const ast_node_t *node, int depth, const char *label) {
     print_node(node->func_def.body, depth + 1, "Body");
     break;
   case AST_PARAM:
-    printf("Parameter %s (line %d)\n", node->param.name, node->line);
+    printf("Parameter %s: ", node->param.name);
+    print_basic_type(node->param.decl_type);
+    printf(" (line %d)\n", node->line);
     break;
   case AST_BLOCK:
     printf("Block (line %d)\n", node->line);
@@ -601,8 +635,13 @@ static void print_node(const ast_node_t *node, int depth, const char *label) {
     }
     break;
   case AST_VAR_DEF:
-    printf("%s %s (line %d)\n", node->var_def.is_mutable ? "Var" : "Val",
-           node->var_def.name, node->line);
+    printf("%s %s", node->var_def.is_mutable ? "Var" : "Val",
+           node->var_def.name);
+    if (node->var_def.decl_type != NULL) {
+      fputs(": ", stdout);
+      print_basic_type(node->var_def.decl_type);
+    }
+    printf(" (line %d)\n", node->line);
     print_node(node->var_def.init, depth + 1, "Initializer");
     break;
   case AST_ASSIGN:
