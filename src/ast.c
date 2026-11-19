@@ -1,7 +1,7 @@
 /*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    ast.c
- * Authors: Michal Řezníček (xreznim00)
+ * Authors: Michal Řezníček (xreznim00), Adam James Fisher (xfishea00)
  * Brief:   abstract syntax tree
  */
 
