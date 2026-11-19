@@ -6,9 +6,9 @@
 
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
+#include "symbol.h"
 #include <stdbool.h>
 #include <stdlib.h>
-#include "symbol.h"
 
 // symbol table structure
 typedef struct symtable symtable_t;

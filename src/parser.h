@@ -1,9 +1,9 @@
 #ifndef PARSER_H
-  #define PARSER_H
+#define PARSER_H
 
-  #include "ast.h"
+#include "ast.h"
 
-  // parses the program from the scanner, returns the AST root
-  ast_node_t *parse(void);
+// parses the program from the scanner, returns the AST root
+ast_node_t *parse(void);
 
-  #endif // PARSER_H
+#endif // PARSER_H

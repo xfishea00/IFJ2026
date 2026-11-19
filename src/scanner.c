@@ -848,9 +848,9 @@ int scanner_next(token_t *out) {
     if (rc != ERR_OK) {
       return rc;
     }
-    if (out->type != TOK_RPAR){
+    if (out->type != TOK_RPAR) {
       trailing_comma = false;
-    }else if(out->type == TOK_RPAR && trailing_comma){
+    } else if (out->type == TOK_RPAR && trailing_comma) {
       unget_char(41);
       out->type = TOK_NEWLINE;
       trailing_comma = false;
@@ -858,7 +858,8 @@ int scanner_next(token_t *out) {
     }
     if (out->type == TOK_NEWLINE) {
       if (line_start || paren_depth > 0) {
-        if(paren_depth > 0) trailing_comma = true;
+        if (paren_depth > 0)
+          trailing_comma = true;
         continue; // empty line or '\n' inside parens
       } else {
         at_line_start = true;

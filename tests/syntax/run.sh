@@ -33,5 +33,15 @@ run_group() {
 run_group tests/syntax/valid 0
 run_group tests/syntax/invalid 2
 
+generated_output=$("$parser" < tests/syntax/valid/funexp2.scala 2>/dev/null)
+if printf '%s\n' "$generated_output" | grep -q '^\.IFJcode26$' &&
+  printf '%s\n' "$generated_output" | grep -q '^CALL \$function_'; then
+  printf 'PASS generator emits function code\n'
+  passed=$((passed + 1))
+else
+  printf 'FAIL generator emits function code\n'
+  failed=$((failed + 1))
+fi
+
 printf '%s passed, %s failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

@@ -7,7 +7,9 @@
 
 #include "symbol.h"
 #include "symtable.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define SYMBOLS_INIT_CAPACITY 16
 
@@ -15,6 +17,22 @@
 static symbol_t **symbols;
 static int symbol_count;
 static int symbol_capacity;
+static unsigned int unique_name_counter;
+
+static char *make_unique_name(symbol_kind_t kind) {
+  char buffer[32];
+  char prefix = kind == SYM_FUNC ? 'f' : 'v';
+  int length =
+      snprintf(buffer, sizeof(buffer), "%c%u", prefix, unique_name_counter++);
+  if (length < 0 || (size_t)length >= sizeof(buffer)) {
+    return NULL;
+  }
+  char *name = malloc((size_t)length + 1);
+  if (name != NULL) {
+    memcpy(name, buffer, (size_t)length + 1);
+  }
+  return name;
+}
 
 symbol_t *symbol_new(symbol_kind_t kind, char *name, ast_node_t *decl) {
   if (symbol_count >= symbol_capacity) {
@@ -34,10 +52,18 @@ symbol_t *symbol_new(symbol_kind_t kind, char *name, ast_node_t *decl) {
   if (sym == NULL) {
     return NULL;
   }
+  char *unique_name = NULL;
+  if (kind == SYM_FUNC || kind == SYM_VAR) {
+    unique_name = make_unique_name(kind);
+    if (unique_name == NULL) {
+      free(sym);
+      return NULL;
+    }
+  }
   sym->kind = kind;
   sym->name = name;
   sym->type = NULL;
-  sym->unique_name = NULL;
+  sym->unique_name = unique_name;
   sym->decl = decl;
   sym->is_mutable = false;
   sym->is_builtin = false;
@@ -56,6 +82,7 @@ void symbols_free_all(void) {
   symbols = NULL;
   symbol_count = 0;
   symbol_capacity = 0;
+  unique_name_counter = 0;
 }
 
 // one scope = one symbol table, linked to the enclosing scope
