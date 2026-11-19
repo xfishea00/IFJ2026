@@ -46,26 +46,27 @@ precedence_terminal_t map_token_to_precedence(token_t t) {
 };
 
 const precedence_t table[TERMINATOR_NUM][TERMINATOR_NUM] = {
-//          id  +  - ++  *  /  <  > <= >= == !=  ! && ||  .  (  )  $
-/* id */    {X, H, H, H, H, H, H, H, H, H, H, H, X, H, H, H, X, H, H},
-/* +  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* -  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* ++ */    {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* *  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* /  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* <  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* >  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* <= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* >= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* == */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* != */    {L, L, L, L, L, L, X, X, X, X, X, X, L, H, H, L, L, H, H},
-/* !  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, H, H, L, L, H, H},
-/* && */    {L, L, L, L, L, L, L, L, L, L, L, L, L, H, H, L, L, H, H},
-/* || */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, H, L, L, H, H},
-/* .  */    {L, H, H, H, H, H, H, H, H, H, H, H, H, H, H, H, L, H, H},
-/* (  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, E, X},
-/* )  */    {X, H, H, H, H, H, H, H, H, H, H, H, X, H, H, H, X, H, H},
-/* $  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, X, X}
+//          id  +  - ++  *  /  <  > <= >= == !=  ! u- && ||  .  (  )  $
+/* id */    {X, H, H, H, H, H, H, H, H, H, H, H, X, X, H, H, H, X, H, H},
+/* +  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* -  */    {L, H, H, H, L, L, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* ++ */    {L, H, H, H, L, L, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* *  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* /  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* <  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* >  */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* <= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* >= */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* == */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* != */    {L, L, L, L, L, L, X, X, X, X, X, X, L, L, H, H, L, L, H, H},
+/* !  */    {L, H, H, H, H, H, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* u- */    {L, H, H, H, H, H, H, H, H, H, H, H, L, L, H, H, L, L, H, H},
+/* && */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, H, H, L, L, H, H},
+/* || */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, H, L, L, H, H},
+/* .  */    {L, H, H, H, H, H, H, H, H, H, H, H, H, H, H, H, H, L, H, H},
+/* (  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, E, X},
+/* )  */    {X, H, H, H, H, H, H, H, H, H, H, H, X, X, H, H, H, X, H, H},
+/* $  */    {L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, X, X}
 };
 
 const stack_element_t end_marker = { .type = STACK_TERMINAL, .terminal = PRE_END };
@@ -85,11 +86,12 @@ const rule_t rules[RULE_NUM] = {
     { .n = 10, .left_side = expression, .right_side = "E == E" },
     { .n = 11, .left_side = expression, .right_side = "E != E" },
     { .n = 12, .left_side = expression, .right_side = "!E"     },
-    { .n = 13, .left_side = expression, .right_side = "E && E" },
-    { .n = 14, .left_side = expression, .right_side = "E || E" },
-    { .n = 15, .left_side = expression, .right_side = "E.E"    },
-    { .n = 16, .left_side = expression, .right_side = "(E)"    },
-    { .n = 17, .left_side = expression, .right_side = "id"     }
+    { .n = 13, .left_side = expression, .right_side = "-E"     },
+    { .n = 14, .left_side = expression, .right_side = "E && E" },
+    { .n = 15, .left_side = expression, .right_side = "E || E" },
+    { .n = 16, .left_side = expression, .right_side = "E.E"    },
+    { .n = 17, .left_side = expression, .right_side = "(E)"    },
+    { .n = 18, .left_side = expression, .right_side = "id"     }
 };
 
 bool is_boundary(token_type_t t) {
@@ -104,6 +106,23 @@ bool is_boundary(token_type_t t) {
             return true;
         default:
             return false;
+    }
+}
+
+void update_expected(bool *expecting_operand, token_type_t t) {
+    switch (t) {
+        case TOK_ID:         
+        case TOK_INT_LIT:    
+        case TOK_DOUBLE_LIT: 
+        case TOK_STRING_LIT: 
+        case TOK_KW_TRUE:    
+        case TOK_KW_FALSE:
+        case TOK_RPAR:
+            *expecting_operand = false;
+            break;
+        default:
+            *expecting_operand = true;
+            break;
     }
 }
 
@@ -122,6 +141,7 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
     stack_init(&stack);
     stack_push(&stack, end_marker);
     int rc;
+    bool expecting_operand = true;
 
     while (is_not_expression_end(stack, current_token->type)) {
         int top_terminal_pos = stack_top_element_type_pos(&stack, STACK_TERMINAL);
@@ -130,7 +150,9 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
         }
 
         stack_element_t topmost_terminal = stack.elements[top_terminal_pos];
-        stack_element_t input_terminal = { .type = STACK_TERMINAL, .terminal = map_token_to_precedence(*current_token) };
+        stack_element_t input_terminal = { .type = STACK_TERMINAL, .terminal = (current_token->type == TOK_MINUS && expecting_operand) 
+                                                                                ? PRE_UMINUS 
+                                                                                : map_token_to_precedence(*current_token) };
         if (input_terminal.terminal == PRE_INVALID) {
             return ERR_SYNTAX;
         }
@@ -140,6 +162,7 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
             case PRE_LOWER:
                 stack_insert(&stack, less_marker, top_terminal_pos + 1);
                 stack_push(&stack, input_terminal);
+                update_expected(&expecting_operand, current_token->type);
                 rc = advance_token(current_token);
                 if (rc != ERR_OK) {
                     return rc;
@@ -235,20 +258,20 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
                             b.type == STACK_TERMINAL && 
                             b.terminal == PRE_OR && 
                             c.type == expression.type) {
-                            rule = rules[13];
+                            rule = rules[14];
                         }
                         else if (a.type == expression.type && 
                             b.type == STACK_TERMINAL && 
                             b.terminal == PRE_DOT && 
                             c.type == expression.type) {
-                            rule = rules[14];
+                            rule = rules[15];
                         }
                         else if (a.type == STACK_TERMINAL && 
                             a.terminal == PRE_LPAR && 
                             b.type == expression.type && 
                             c.type == STACK_TERMINAL && 
                             c.terminal == PRE_RPAR) {
-                            rule = rules[15];
+                            rule = rules[16];
                         }
                         else {
                             return ERR_SYNTAX;
@@ -265,6 +288,11 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
                             b.type == expression.type) {
                             rule = rules[11];
                         }
+                        else if (a.type == STACK_TERMINAL &&
+                            a.terminal == PRE_UMINUS &&
+                            b.type == expression.type) {
+                            rule = rules[12];
+                        }
                         else {
                             return ERR_SYNTAX;
                         }
@@ -276,7 +304,7 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
 
                         if (a.type == STACK_TERMINAL && 
                             a.terminal == PRE_ID) {
-                            rule = rules[16];
+                            rule = rules[17];
                         }
                         else {
                             return ERR_SYNTAX;
@@ -294,6 +322,7 @@ int parse_non_id_expression(token_t *current_token, advance_token_f advance_toke
 
             case PRE_EQUAL:
                 stack_push(&stack, input_terminal);
+                update_expected(&expecting_operand, current_token->type);
                 rc = advance_token(current_token);
                 if (rc != ERR_OK) {
                     return rc;

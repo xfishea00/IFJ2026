@@ -27,6 +27,7 @@ typedef enum {
     PRE_NEQ,    // !=
 
     PRE_NOT,    // !
+    PRE_UMINUS, // unary -
 
     PRE_AND,    // &&
     PRE_OR,     // ||
@@ -71,8 +72,8 @@ typedef int (*advance_token_f)(token_t *);
 #define E PRE_EQUAL
 #define X PRE_ERROR
 
-#define TERMINATOR_NUM 19 // number of rows and columns in the table
-#define RULE_NUM 17       // number of rules
+#define TERMINATOR_NUM 20 // number of rows and columns in the table
+#define RULE_NUM 18       // number of rules
 
 precedence_terminal_t map_token_to_precedence(token_t);                                // maps tokens to precedence terminals
 bool is_boundary(token_type_t t);                                                      // returns true for tokens that are not a part of an expression
