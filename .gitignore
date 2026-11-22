@@ -32,3 +32,4 @@ src/examplecode/
 .metals
 .scala-build
 
+tests/syntax/README.md
