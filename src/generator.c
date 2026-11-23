@@ -6,12 +6,14 @@
  */
 
 #include "generator.h"
+#include "error.h"
 #include "symbol.h"
 #include "type.h"
 
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,13 +23,19 @@ static void generate_error(generator_state_t *state, const char *error_message,
 static void generate_function(generator_state_t *state, ast_node_t *node);
 static void generate_function_parameters(generator_state_t *state,
                                          ast_node_t *node);
+static void generate_discard(generator_state_t *state);
+static void generate_function_body(generator_state_t *state, ast_node_t *node);
+static void flush_function_code(generator_state_t *state, const char *code,
+                                size_t code_length);
 static void generate_block(generator_state_t *state, ast_node_t *node);
+static void generate_expression(generator_state_t *state, ast_node_t *node);
 static void generate_variable_declaration(generator_state_t *state,
                                           ast_node_t *node);
 static void generate_assignment(generator_state_t *state, ast_node_t *node);
 static void generate_return(generator_state_t *state, ast_node_t *node);
-static void generate_function_return(generator_state_t *state,
-                                     ast_node_t *node);
+static void generate_function_return(generator_state_t *state, ast_node_t *node,
+                                     bool has_result);
+static void generate_return_epilogue(generator_state_t *state);
 static void generate_literal(generator_state_t *state, ast_node_t *node);
 static void generate_variable(generator_state_t *state, ast_node_t *node);
 static void generate_unary_expression(generator_state_t *state,
@@ -69,14 +77,60 @@ static void generate_output(generator_state_t *state, const char *format, ...) {
   if (state == NULL) {
     return;
   }
+
   va_list args;
   va_start(args, format);
-  int result = vfprintf(state->output, format, args);
-  va_end(args);
+  if (state->buffering_output) {
+    va_list count_args;
+    va_copy(count_args, args);
+    int required = vsnprintf(NULL, 0, format, count_args);
+    va_end(count_args);
+    if (required < 0 || state->output_buffer_length == SIZE_MAX ||
+        (size_t)required > SIZE_MAX - state->output_buffer_length - 1) {
+      va_end(args);
+      state->error = true;
+      return;
+    }
 
-  if (result < 0) {
-    state->error = true;
+    size_t needed = state->output_buffer_length + (size_t)required + 1;
+    if (needed > state->output_buffer_capacity) {
+      size_t capacity = state->output_buffer_capacity == 0
+                            ? 256
+                            : state->output_buffer_capacity;
+      while (capacity < needed) {
+        if (capacity > SIZE_MAX / 2) {
+          capacity = needed;
+          break;
+        }
+        capacity *= 2;
+      }
+      char *buffer = realloc(state->output_buffer, capacity);
+      if (buffer == NULL) {
+        va_end(args);
+        state->error = true;
+        return;
+      }
+      state->output_buffer = buffer;
+      state->output_buffer_capacity = capacity;
+    }
+
+    int written =
+        vsnprintf(state->output_buffer + state->output_buffer_length,
+                  state->output_buffer_capacity - state->output_buffer_length,
+                  format, args);
+    if (written != required) {
+      va_end(args);
+      state->error = true;
+      return;
+    }
+    state->output_buffer_length += (size_t)written;
+  } else {
+    int result = vfprintf(state->output, format, args);
+    if (result < 0) {
+      state->error = true;
+    }
   }
+  va_end(args);
 }
 
 /**
@@ -142,8 +196,24 @@ static void generate_error(generator_state_t *state, const char *error_message,
   if (state == NULL) {
     return;
   }
-  fprintf(stderr, "Code generation error: %s\n", error_message);
+  fprintf(stderr, "Code generation error: ");
+  va_list args;
+  va_start(args, error_message);
+  vfprintf(stderr, error_message, args);
+  va_end(args);
+  fputc('\n', stderr);
   state->error = true;
+}
+
+static void generate_discard(generator_state_t *state) {
+  char temp_name[64];
+  generate_temp_name(state, temp_name, sizeof(temp_name));
+  if (state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", temp_name);
+  generate_output(state, "POPS LF@%s\n", temp_name);
 }
 
 /*
@@ -162,7 +232,8 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
     return;
   }
   if (root == NULL || root->kind != AST_PROGRAM) {
-    state->error = true;
+    generate_error(state, "Expected program node, got AST kind %d",
+                   root == NULL ? -1 : (int)root->kind);
     return;
   }
 
@@ -174,13 +245,15 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
     ast_node_t *def = defs->items[i];
 
     if (def == NULL || def->kind != AST_FUNC_DEF) {
-      state->error = true;
+      generate_error(state,
+                     "Unsupported top-level definition at index %d "
+                     "(AST kind %d)",
+                     i, def == NULL ? -1 : (int)def->kind);
       return;
     }
     if (def->func_def.is_main) {
       if (main_func != NULL) {
         generate_error(state, "Multiple main functions defined");
-        state->error = true;
         return;
       }
       main_func = def;
@@ -190,7 +263,6 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
   if (main_func == NULL || main_func->func_def.symbol == NULL ||
       main_func->func_def.symbol->unique_name == NULL) {
     generate_error(state, "Main function not defined");
-    state->error = true;
     return;
   }
   // Generate the IFJcode26 header
@@ -223,7 +295,7 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
 static void generate_statement(generator_state_t *state, ast_node_t *node) {
   if (state == NULL || node == NULL) {
     if (state != NULL) {
-      state->error = true;
+      generate_error(state, "Null statement node");
     }
     return;
   }
@@ -267,8 +339,18 @@ static void generate_statement(generator_state_t *state, ast_node_t *node) {
     generate_output(state, "DEFVAR LF@%s\n", temp_name);
     generate_output(state, "POPS LF@%s\n", temp_name);
     break;
+  case AST_ID:
+  case AST_LITERAL:
+  case AST_BINARY:
+  case AST_UNARY:
+    generate_expression(state, node);
+    if (state->error) {
+      return;
+    }
+    generate_discard(state);
+    break;
   default:
-    state->error = true;
+    generate_error(state, "Unsupported statement AST kind %d", (int)node->kind);
     break;
   }
 }
@@ -281,7 +363,7 @@ static void generate_statement(generator_state_t *state, ast_node_t *node) {
 static void generate_expression(generator_state_t *state, ast_node_t *node) {
   if (state == NULL || node == NULL) {
     if (state != NULL) {
-      state->error = true;
+      generate_error(state, "Null expression node");
     }
     return;
   }
@@ -302,7 +384,8 @@ static void generate_expression(generator_state_t *state, ast_node_t *node) {
     generate_function_call(state, node);
     break;
   default:
-    state->error = true;
+    generate_error(state, "Unsupported expression AST kind %d",
+                   (int)node->kind);
     break;
   }
 }
@@ -348,18 +431,34 @@ static void generate_function(generator_state_t *state, ast_node_t *node) {
   if (state->error) {
     return;
   }
+
+  bool previous_buffering = state->buffering_output;
+  char *previous_buffer = state->output_buffer;
+  size_t previous_length = state->output_buffer_length;
+  size_t previous_capacity = state->output_buffer_capacity;
+  state->buffering_output = true;
+  state->output_buffer = NULL;
+  state->output_buffer_length = 0;
+  state->output_buffer_capacity = 0;
+
   generate_function_parameters(state, node);
+  if (!state->error) {
+    generate_function_body(state, node);
+  }
+
+  char *function_code = state->output_buffer;
+  size_t function_code_length = state->output_buffer_length;
+  state->buffering_output = previous_buffering;
+  state->output_buffer = previous_buffer;
+  state->output_buffer_length = previous_length;
+  state->output_buffer_capacity = previous_capacity;
+
   if (state->error) {
+    free(function_code);
     return;
   }
-  generate_block(state, node->func_def.body);
-  if (state->error) {
-    return;
-  }
-  generate_function_return(state, node);
-  if (state->error) {
-    return;
-  }
+  flush_function_code(state, function_code, function_code_length);
+  free(function_code);
 }
 
 /**
@@ -408,6 +507,173 @@ static void generate_function_parameters(generator_state_t *state,
       }
     }
   }
+}
+
+static bool is_function_result_expression(const ast_node_t *node) {
+  if (node == NULL) {
+    return false;
+  }
+  switch (node->kind) {
+  case AST_LITERAL:
+  case AST_ID:
+  case AST_BINARY:
+  case AST_UNARY:
+  case AST_CALL:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void generate_function_body(generator_state_t *state, ast_node_t *node) {
+  if (state == NULL || node == NULL || node->kind != AST_FUNC_DEF ||
+      node->func_def.body == NULL || node->func_def.body->kind != AST_BLOCK) {
+    if (state != NULL) {
+      generate_error(state, "Function has an invalid body");
+    }
+    return;
+  }
+
+  ast_node_t *body = node->func_def.body;
+  ast_list_t *stmts = &body->block.stmts;
+  bool returns_value =
+      !node->func_def.is_main && (node->func_def.ret_type == NULL ||
+                                  node->func_def.ret_type->kind != T_UNIT);
+  bool has_result = false;
+
+  for (int i = 0; i < stmts->count; i++) {
+    ast_node_t *stmt = stmts->items[i];
+    if (stmt == NULL) {
+      generate_error(state, "Null statement in function body at index %d", i);
+      return;
+    }
+
+    bool is_last = i == stmts->count - 1;
+    if (is_last && returns_value && is_function_result_expression(stmt)) {
+      generate_expression(state, stmt);
+      if (state->error) {
+        return;
+      }
+      has_result = true;
+    } else if (is_last && !returns_value &&
+               is_function_result_expression(stmt)) {
+      generate_expression(state, stmt);
+      if (state->error) {
+        return;
+      }
+      generate_discard(state);
+      if (state->error) {
+        return;
+      }
+    } else {
+      generate_statement(state, stmt);
+      if (state->error) {
+        return;
+      }
+    }
+  }
+
+  if (stmts->count > 0 && stmts->items[stmts->count - 1]->kind == AST_RETURN) {
+    return;
+  }
+  generate_function_return(state, node, has_result);
+}
+
+static void flush_function_code(generator_state_t *state, const char *code,
+                                size_t code_length) {
+  typedef struct {
+    char **names;
+    size_t count;
+    size_t capacity;
+  } declared_names_t;
+  declared_names_t declared = {0};
+
+  static const char prefix[] = "DEFVAR LF@";
+  size_t position = 0;
+  while (position < code_length) {
+    size_t line_start = position;
+    const char *newline = memchr(code + position, '\n', code_length - position);
+    size_t line_length = newline == NULL
+                             ? code_length - position
+                             : (size_t)(newline - (code + position)) + 1;
+    position += line_length;
+    if (line_length < sizeof(prefix) - 1 ||
+        memcmp(code + line_start, prefix, sizeof(prefix) - 1) != 0) {
+      continue;
+    }
+
+    const char *name = code + line_start + sizeof(prefix) - 1;
+    size_t name_length = 0;
+    while (sizeof(prefix) - 1 + name_length < line_length &&
+           name[name_length] != ' ' && name[name_length] != '\t' &&
+           name[name_length] != '\r' && name[name_length] != '\n') {
+      name_length++;
+    }
+    if (name_length == 0) {
+      generate_error(state, "Encountered empty DEFVAR name in function code");
+      goto cleanup;
+    }
+    bool duplicate = false;
+    for (size_t i = 0; i < declared.count; i++) {
+      if (strlen(declared.names[i]) == name_length &&
+          memcmp(declared.names[i], name, name_length) == 0) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) {
+      continue;
+    }
+
+    if (declared.count == declared.capacity) {
+      size_t capacity = declared.capacity == 0 ? 8 : declared.capacity * 2;
+      char **names = realloc(declared.names, capacity * sizeof(*names));
+      if (names == NULL) {
+        generate_error(state, "Could not allocate function variable list");
+        break;
+      }
+      declared.names = names;
+      declared.capacity = capacity;
+    }
+    declared.names[declared.count] = malloc(name_length + 1);
+    if (declared.names[declared.count] == NULL) {
+      generate_error(state, "Could not allocate function variable name");
+      break;
+    }
+    memcpy(declared.names[declared.count], name, name_length);
+    declared.names[declared.count][name_length] = '\0';
+    declared.count++;
+  }
+
+  for (size_t i = 0; i < declared.count; i++) {
+    generate_output(state, "DEFVAR LF@%s\n", declared.names[i]);
+    if (state->error) {
+      goto cleanup;
+    }
+  }
+
+  position = 0;
+  while (position < code_length) {
+    size_t line_start = position;
+    const char *newline = memchr(code + position, '\n', code_length - position);
+    size_t line_length = newline == NULL
+                             ? code_length - position
+                             : (size_t)(newline - (code + position)) + 1;
+    position += line_length;
+    bool is_defvar = line_length >= sizeof(prefix) - 1 &&
+                     memcmp(code + line_start, prefix, sizeof(prefix) - 1) == 0;
+    if (!is_defvar && fwrite(code + line_start, 1, line_length,
+                             state->output) != line_length) {
+      generate_error(state, "Could not write generated function code");
+      goto cleanup;
+    }
+  }
+
+cleanup:
+  for (size_t i = 0; i < declared.count; i++) {
+    free(declared.names[i]);
+  }
+  free(declared.names);
 }
 
 /*
@@ -464,6 +730,11 @@ static void generate_variable_declaration(generator_state_t *state,
   if (node->var_def.symbol == NULL ||
       node->var_def.symbol->unique_name == NULL) {
     state->error = true;
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", node->var_def.symbol->unique_name);
+  if (state->error) {
     return;
   }
 
@@ -534,6 +805,13 @@ static void generate_return(generator_state_t *state, ast_node_t *node) {
     return;
   }
   // Pop the frame and return
+  generate_return_epilogue(state);
+}
+
+static void generate_return_epilogue(generator_state_t *state) {
+  if (state == NULL) {
+    return;
+  }
   generate_output(state, "POPFRAME\n");
   generate_output(state, "RETURN\n");
 }
@@ -543,17 +821,18 @@ static void generate_return(generator_state_t *state, ast_node_t *node) {
  * @param state The generator state.
  * @param node The AST node representing the return value.
  */
-static void generate_function_return(generator_state_t *state,
-                                     ast_node_t *node) {
+static void generate_function_return(generator_state_t *state, ast_node_t *node,
+                                     bool has_result) {
   if (state == NULL || node == NULL || node->kind != AST_FUNC_DEF) {
     if (state != NULL) {
       state->error = true;
     }
     return;
   }
-  generate_output(state, "PUSHS nil@nil\n");
-  generate_output(state, "POPFRAME\n");
-  generate_output(state, "RETURN\n");
+  if (!has_result) {
+    generate_output(state, "PUSHS nil@nil\n");
+  }
+  generate_return_epilogue(state);
 }
 
 /*
@@ -825,7 +1104,11 @@ static void generate_function_call(generator_state_t *state, ast_node_t *node) {
  * @param node The AST node representing the boolean expression.
  */
 static void generate_boolean_expression(generator_state_t *state,
-                                        ast_node_t *node) {}
+                                        ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Boolean expression code generation is not "
+                        "implemented");
+}
 
 /**
  * @brief Generates an if expression from the AST.
@@ -833,6 +1116,8 @@ static void generate_boolean_expression(generator_state_t *state,
  * @param node The AST node representing the if expression.
  */
 static void generate_if_expression(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "If-expression code generation is not implemented");
 }
 
 /*
@@ -946,7 +1231,10 @@ static void generate_while(generator_state_t *state, ast_node_t *node) {
  * @param state The generator state.
  * @param node The AST node representing the for loop.
  */
-static void generate_for(generator_state_t *state, ast_node_t *node) {}
+static void generate_for(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "For-loop code generation is not implemented");
+}
 
 /*
  * ----------------------------------------------------------------
@@ -959,14 +1247,20 @@ static void generate_for(generator_state_t *state, ast_node_t *node) {}
  * @param state The generator state.
  * @param node The AST node representing the list.
  */
-static void generate_list(generator_state_t *state, ast_node_t *node) {}
+static void generate_list(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "List construction code generation is not implemented");
+}
 
 /**
  * @brief Generates a list access from the AST.
  * @param state The generator state.
  * @param node The AST node representing the list access.
  */
-static void generate_list_access(generator_state_t *state, ast_node_t *node) {}
+static void generate_list_access(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "List access code generation is not implemented");
+}
 
 /**
  * @brief Generates a list operation from the AST.
@@ -974,7 +1268,10 @@ static void generate_list_access(generator_state_t *state, ast_node_t *node) {}
  * @param node The AST node representing the list operation.
  */
 static void generate_list_operation(generator_state_t *state,
-                                    ast_node_t *node) {}
+                                    ast_node_t *node) {
+  (void)node;
+  generate_error(state, "List operation code generation is not implemented");
+}
 
 /*
  * ----------------------------------------------------------------
@@ -988,7 +1285,11 @@ static void generate_list_operation(generator_state_t *state,
  * @param node The AST node representing the data class definition.
  */
 static void generate_data_class_definition(generator_state_t *state,
-                                           ast_node_t *node) {}
+                                           ast_node_t *node) {
+  (void)node;
+  generate_error(state,
+                 "Data class definition code generation is not implemented");
+}
 
 /**
  * @brief Generates a data class constructor from the AST.
@@ -996,7 +1297,11 @@ static void generate_data_class_definition(generator_state_t *state,
  * @param node The AST node representing the data class constructor.
  */
 static void generate_data_class_constructor(generator_state_t *state,
-                                            ast_node_t *node) {}
+                                            ast_node_t *node) {
+  (void)node;
+  generate_error(state,
+                 "Data class constructor code generation is not implemented");
+}
 
 /**
  * @brief Generates a data class member access from the AST.
@@ -1004,6 +1309,8 @@ static void generate_data_class_constructor(generator_state_t *state,
  * @param node The AST node representing the data class member access.
  */
 static void generate_member_access(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Data class member access is not implemented");
 }
 
 /**
@@ -1011,14 +1318,20 @@ static void generate_member_access(generator_state_t *state, ast_node_t *node) {
  * @param state The generator state.
  * @param node The AST node representing the data class member call.
  */
-static void generate_member_call(generator_state_t *state, ast_node_t *node) {}
+static void generate_member_call(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Data class member call is not implemented");
+}
 
 /**
  * @brief Generates a union type definition from the AST.
  * @param state The generator state.
  * @param node The AST node representing the union type definition.
  */
-static void generate_union_type(generator_state_t *state, ast_node_t *node) {}
+static void generate_union_type(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Union type code generation is not implemented");
+}
 
 /*
  * ----------------------------------------------------------------
@@ -1031,21 +1344,30 @@ static void generate_union_type(generator_state_t *state, ast_node_t *node) {}
  * @param state The generator state.
  * @param node The AST node representing the match statement.
  */
-static void generate_match(generator_state_t *state, ast_node_t *node) {}
+static void generate_match(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Match code generation is not implemented");
+}
 
 /**
  * @brief Generates a match case from the AST.
  * @param state The generator state.
  * @param node The AST node representing the match case.
  */
-static void generate_match_case(generator_state_t *state, ast_node_t *node) {}
+static void generate_match_case(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Match case code generation is not implemented");
+}
 
 /**
  * @brief Generates a pattern from the AST.
  * @param state The generator state.
  * @param node The AST node representing the pattern.
  */
-static void generate_pattern(generator_state_t *state, ast_node_t *node) {}
+static void generate_pattern(generator_state_t *state, ast_node_t *node) {
+  (void)node;
+  generate_error(state, "Pattern code generation is not implemented");
+}
 
 /*
  * ----------------------------------------------------------------
@@ -1115,8 +1437,7 @@ static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
 
   // builtin functions with 1 argument call generate_expression before they are
   // called
-  if (strcmp(builtin_name, "print") == 0 ||
-      strcmp(builtin_name, "toStr") == 0 ||
+  if (strcmp(builtin_name, "toStr") == 0 ||
       strcmp(builtin_name, "toInt") == 0 ||
       strcmp(builtin_name, "strLength") == 0 ||
       strcmp(builtin_name, "chr") == 0) {
@@ -1350,7 +1671,7 @@ static void generate_toStr(generator_state_t *state) {
 
   // generate code for error
   generate_output(state, "LABEL %s\n", label_error);
-  generate_error(state, "EXIT int@40\n");
+  generate_output(state, "EXIT int@40\n");
 
   // TODO: implement toStr for other types (lists,...)
 }
@@ -1699,11 +2020,17 @@ static void generate_chr(generator_state_t *state) {
 }
 
 // TODO: implement the additional functions
-static void generate_readBoolean(generator_state_t *state) {}
+static void generate_readBoolean(generator_state_t *state) {
+  generate_error(state, "readBoolean code generation is not implemented");
+}
 
-static void generate_readIntMaybe(generator_state_t *state) {}
+static void generate_readIntMaybe(generator_state_t *state) {
+  generate_error(state, "readIntMaybe code generation is not implemented");
+}
 
-static void generate_readDoubleMaybe(generator_state_t *state) {}
+static void generate_readDoubleMaybe(generator_state_t *state) {
+  generate_error(state, "readDoubleMaybe code generation is not implemented");
+}
 
 /*
  * ----------------------------------------------------------------
@@ -1718,15 +2045,19 @@ static void generate_readDoubleMaybe(generator_state_t *state) {}
  */
 int generate_code(ast_node_t *root) {
   if (root == NULL) {
-    return false;
+    return ERR_INTERNAL;
   }
   generator_state_t state;
   state.output = stdout;
   state.temp_counter = 0;
   state.label_counter = 0;
   state.error = false;
+  state.buffering_output = false;
+  state.output_buffer = NULL;
+  state.output_buffer_length = 0;
+  state.output_buffer_capacity = 0;
 
   generate_program(&state, root);
 
-  return !state.error;
+  return state.error ? ERR_INTERNAL : ERR_OK;
 }
