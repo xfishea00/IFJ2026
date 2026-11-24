@@ -33,6 +33,7 @@ static int pending_dedents; // DEDENT still to be returned
 static token_t held_token;  // token returned after INDENT/DEDENT
 static bool has_held;       // held_token contains a token
 static bool trailing_comma;
+static bool paren_line_start; // next char starts a line inside parens
 
 // appends c to lexeme, on error returns ERR_INTERNAL
 #define APPEND(c)                                                              \
@@ -82,6 +83,7 @@ int scanner_init(FILE *in) {
   paren_depth = 0;
   pending_dedents = 0;
   has_held = false;
+  paren_line_start = false;
   return str_init(&lexeme);
 }
 
@@ -155,6 +157,7 @@ static const struct {
     {"var", TOK_KW_VAR},
     {"val", TOK_KW_VAL},
     {"Unit", TOK_KW_UNIT},
+
     // extension keywords
     {"for", TOK_KW_FOR},
     {"Boolean", TOK_KW_BOOLEAN},
@@ -840,7 +843,9 @@ int scanner_next(token_t *out) {
     int indent = 0;
     bool tab = false;
     bool line_start = at_line_start;
-    if (line_start) {
+    bool paren_line = paren_line_start;
+    paren_line_start = false;
+    if (line_start || paren_line) {
       read_indent(&indent, &tab);
     }
 
@@ -848,6 +853,13 @@ int scanner_next(token_t *out) {
     if (rc != ERR_OK) {
       return rc;
     }
+
+    // tab at start of line inside parens
+    if (paren_line && tab && out->type != TOK_NEWLINE && out->type != TOK_EOF) {
+      token_free(out);
+      return ERR_LEXICAL;
+    }
+
     if (out->type != TOK_RPAR) {
       trailing_comma = false;
     } else if (out->type == TOK_RPAR && trailing_comma) {
@@ -856,10 +868,13 @@ int scanner_next(token_t *out) {
       trailing_comma = false;
       return ERR_OK;
     }
+
     if (out->type == TOK_NEWLINE) {
       if (line_start || paren_depth > 0) {
-        if (paren_depth > 0)
+        if (paren_depth > 0) {
           trailing_comma = true;
+          paren_line_start = true;
+        }
         continue; // empty line or '\n' inside parens
       } else {
         at_line_start = true;
@@ -883,6 +898,7 @@ int scanner_next(token_t *out) {
     if (!line_start) {
       return ERR_OK; // token in the middle of a line
     }
+
     if (out->type == TOK_EOF) {
       indent = 0; // EOF closes all blocks
     } else {
