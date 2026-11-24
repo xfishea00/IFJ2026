@@ -25,8 +25,8 @@ static void generate_function_parameters(generator_state_t *state,
                                          ast_node_t *node);
 static void generate_discard(generator_state_t *state);
 static void generate_function_body(generator_state_t *state, ast_node_t *node);
-static void flush_function_code(generator_state_t *state, const char *code,
-                                size_t code_length);
+static void buffer_function_code(generator_state_t *state, const char *code,
+                                 size_t code_length);
 static void generate_block(generator_state_t *state, ast_node_t *node);
 static void generate_expression(generator_state_t *state, ast_node_t *node);
 static void generate_variable_declaration(generator_state_t *state,
@@ -43,6 +43,7 @@ static void generate_unary_expression(generator_state_t *state,
 static void generate_binary_expression(generator_state_t *state,
                                        ast_node_t *node);
 static void generate_function_call(generator_state_t *state, ast_node_t *node);
+static void generate_if_expression(generator_state_t *state, ast_node_t *node);
 static void generate_if(generator_state_t *state, ast_node_t *node);
 static void generate_while(generator_state_t *state, ast_node_t *node);
 static void generate_string(generator_state_t *state, ast_node_t *node);
@@ -383,6 +384,9 @@ static void generate_expression(generator_state_t *state, ast_node_t *node) {
   case AST_CALL:
     generate_function_call(state, node);
     break;
+  case AST_IF:
+    generate_if_expression(state, node);
+    break;
   default:
     generate_error(state, "Unsupported expression AST kind %d",
                    (int)node->kind);
@@ -457,7 +461,7 @@ static void generate_function(generator_state_t *state, ast_node_t *node) {
     free(function_code);
     return;
   }
-  flush_function_code(state, function_code, function_code_length);
+  buffer_function_code(state, function_code, function_code_length);
   free(function_code);
 }
 
@@ -520,9 +524,50 @@ static bool is_function_result_expression(const ast_node_t *node) {
   case AST_UNARY:
   case AST_CALL:
     return true;
+  case AST_IF:
+    return node->if_stmt.else_branch != NULL;
   default:
     return false;
   }
+}
+
+static bool is_if_branch_result_expression(const ast_node_t *node) {
+  return is_function_result_expression(node);
+}
+
+static void generate_if_branch_value(generator_state_t *state,
+                                     ast_node_t *branch) {
+  if (state == NULL || branch == NULL || branch->kind != AST_BLOCK ||
+      branch->block.stmts.count == 0) {
+    if (state != NULL) {
+      generate_error(state, "If-expression branch has no result");
+    }
+    return;
+  }
+
+  ast_list_t *stmts = &branch->block.stmts;
+  for (int i = 0; i < stmts->count - 1; i++) {
+    if (stmts->items[i] == NULL) {
+      generate_error(state, "Null statement in if-expression branch");
+      return;
+    }
+    generate_statement(state, stmts->items[i]);
+    if (state->error) {
+      return;
+    }
+  }
+
+  ast_node_t *result = stmts->items[stmts->count - 1];
+  if (result != NULL && result->kind == AST_RETURN) {
+    generate_statement(state, result);
+    return;
+  }
+  if (!is_if_branch_result_expression(result)) {
+    generate_error(state,
+                   "If-expression branch does not end with an expression");
+    return;
+  }
+  generate_expression(state, result);
 }
 
 static void generate_function_body(generator_state_t *state, ast_node_t *node) {
@@ -579,23 +624,30 @@ static void generate_function_body(generator_state_t *state, ast_node_t *node) {
   generate_function_return(state, node, has_result);
 }
 
-static void flush_function_code(generator_state_t *state, const char *code,
-                                size_t code_length) {
+static void buffer_function_code(generator_state_t *state, const char *code,
+                                 size_t code_length) {
   typedef struct {
     char **names;
     size_t count;
     size_t capacity;
-  } declared_names_t;
-  declared_names_t declared = {0};
+  } defvars_t;
+  defvars_t declared = {0};
+  bool needs_cleanup = false;
 
   static const char prefix[] = "DEFVAR LF@";
+
   size_t position = 0;
-  while (position < code_length) {
+  while (!needs_cleanup && position < code_length) {
     size_t line_start = position;
     const char *newline = memchr(code + position, '\n', code_length - position);
-    size_t line_length = newline == NULL
-                             ? code_length - position
-                             : (size_t)(newline - (code + position)) + 1;
+
+    size_t line_length;
+    if (newline == NULL) {
+      line_length = code_length - position;
+    } else {
+      line_length = (size_t)(newline - (code + position)) + 1;
+    }
+
     position += line_length;
     if (line_length < sizeof(prefix) - 1 ||
         memcmp(code + line_start, prefix, sizeof(prefix) - 1) != 0) {
@@ -611,7 +663,8 @@ static void flush_function_code(generator_state_t *state, const char *code,
     }
     if (name_length == 0) {
       generate_error(state, "Encountered empty DEFVAR name in function code");
-      goto cleanup;
+      needs_cleanup = true;
+      break;
     }
     bool duplicate = false;
     for (size_t i = 0; i < declared.count; i++) {
@@ -630,6 +683,7 @@ static void flush_function_code(generator_state_t *state, const char *code,
       char **names = realloc(declared.names, capacity * sizeof(*names));
       if (names == NULL) {
         generate_error(state, "Could not allocate function variable list");
+        needs_cleanup = true;
         break;
       }
       declared.names = names;
@@ -638,6 +692,7 @@ static void flush_function_code(generator_state_t *state, const char *code,
     declared.names[declared.count] = malloc(name_length + 1);
     if (declared.names[declared.count] == NULL) {
       generate_error(state, "Could not allocate function variable name");
+      needs_cleanup = true;
       break;
     }
     memcpy(declared.names[declared.count], name, name_length);
@@ -645,31 +700,35 @@ static void flush_function_code(generator_state_t *state, const char *code,
     declared.count++;
   }
 
-  for (size_t i = 0; i < declared.count; i++) {
+  for (size_t i = 0; !needs_cleanup && i < declared.count; i++) {
     generate_output(state, "DEFVAR LF@%s\n", declared.names[i]);
     if (state->error) {
-      goto cleanup;
+      needs_cleanup = true;
     }
   }
 
   position = 0;
-  while (position < code_length) {
+  while (!needs_cleanup && position < code_length) {
     size_t line_start = position;
     const char *newline = memchr(code + position, '\n', code_length - position);
-    size_t line_length = newline == NULL
-                             ? code_length - position
-                             : (size_t)(newline - (code + position)) + 1;
+
+    size_t line_length;
+    if (newline == NULL) {
+      line_length = code_length - position;
+    } else {
+      line_length = (size_t)(newline - (code + position)) + 1;
+    }
+
     position += line_length;
     bool is_defvar = line_length >= sizeof(prefix) - 1 &&
                      memcmp(code + line_start, prefix, sizeof(prefix) - 1) == 0;
     if (!is_defvar && fwrite(code + line_start, 1, line_length,
                              state->output) != line_length) {
       generate_error(state, "Could not write generated function code");
-      goto cleanup;
+      needs_cleanup = true;
     }
   }
 
-cleanup:
   for (size_t i = 0; i < declared.count; i++) {
     free(declared.names[i]);
   }
@@ -1116,8 +1175,43 @@ static void generate_boolean_expression(generator_state_t *state,
  * @param node The AST node representing the if expression.
  */
 static void generate_if_expression(generator_state_t *state, ast_node_t *node) {
-  (void)node;
-  generate_error(state, "If-expression code generation is not implemented");
+  if (state == NULL || node == NULL || node->kind != AST_IF ||
+      node->if_stmt.cond == NULL || node->if_stmt.then_branch == NULL ||
+      node->if_stmt.else_branch == NULL) {
+    if (state != NULL) {
+      generate_error(state,
+                     "If-expression requires a condition and both branches");
+    }
+    return;
+  }
+
+  char else_label[64];
+  char end_label[64];
+  generate_label_name(state, else_label, sizeof(else_label));
+  generate_label_name(state, end_label, sizeof(end_label));
+  if (state->error) {
+    return;
+  }
+
+  generate_expression(state, node->if_stmt.cond);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "PUSHS bool@false\n");
+  generate_output(state, "JUMPIFEQS %s\n", else_label);
+
+  generate_if_branch_value(state, node->if_stmt.then_branch);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "JUMP %s\n", end_label);
+
+  generate_label(state, else_label);
+  generate_if_branch_value(state, node->if_stmt.else_branch);
+  if (state->error) {
+    return;
+  }
+  generate_label(state, end_label);
 }
 
 /*
@@ -1232,8 +1326,140 @@ static void generate_while(generator_state_t *state, ast_node_t *node) {
  * @param node The AST node representing the for loop.
  */
 static void generate_for(generator_state_t *state, ast_node_t *node) {
-  (void)node;
-  generate_error(state, "For-loop code generation is not implemented");
+  if (state == NULL || node == NULL || node->kind != AST_FOR ||
+      node->for_stmt.source == NULL ||
+      node->for_stmt.source->kind != AST_RANGE || node->for_stmt.body == NULL ||
+      node->for_stmt.body->kind != AST_BLOCK || node->for_stmt.symbol == NULL ||
+      node->for_stmt.symbol->unique_name == NULL) {
+    if (state != NULL) {
+      generate_error(state,
+                     "For-loop requires an integer range and a valid body");
+    }
+    return;
+  }
+
+  ast_node_t *range = node->for_stmt.source;
+  if (range->range.from == NULL || range->range.end == NULL) {
+    generate_error(state, "For-loop range is missing a bound");
+    return;
+  }
+
+  char start_value[64];
+  char end_value[64];
+  char step_value[64];
+  char loop_label[64];
+  char positive_label[64];
+  char body_label[64];
+  char increment_label[64];
+  char end_label[64];
+  char nonzero_step_label[64];
+
+  generate_temp_name(state, start_value, sizeof(start_value));
+  generate_temp_name(state, end_value, sizeof(end_value));
+  generate_temp_name(state, step_value, sizeof(step_value));
+  generate_label_name(state, loop_label, sizeof(loop_label));
+  generate_label_name(state, positive_label, sizeof(positive_label));
+  generate_label_name(state, body_label, sizeof(body_label));
+  generate_label_name(state, increment_label, sizeof(increment_label));
+  generate_label_name(state, end_label, sizeof(end_label));
+  generate_label_name(state, nonzero_step_label, sizeof(nonzero_step_label));
+  if (state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", start_value);
+  generate_output(state, "DEFVAR LF@%s\n", end_value);
+  generate_output(state, "DEFVAR LF@%s\n", step_value);
+  generate_output(state, "DEFVAR LF@%s\n", node->for_stmt.symbol->unique_name);
+
+  generate_expression(state, range->range.from);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "POPS LF@%s\n", start_value);
+
+  generate_expression(state, range->range.end);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "POPS LF@%s\n", end_value);
+
+  if (range->range.step == NULL) {
+    generate_output(state, "MOVE LF@%s int@1\n", step_value);
+  } else {
+    generate_expression(state, range->range.step);
+    if (state->error) {
+      return;
+    }
+    generate_output(state, "POPS LF@%s\n", step_value);
+  }
+
+  generate_output(state, "JUMPIFNEQ %s LF@%s int@0\n", nonzero_step_label,
+                  step_value);
+  generate_output(state, "EXIT int@40\n");
+  generate_label(state, nonzero_step_label);
+  generate_output(state, "MOVE LF@%s LF@%s\n",
+                  node->for_stmt.symbol->unique_name, start_value);
+
+  generate_label(state, loop_label);
+  generate_output(state, "PUSHS LF@%s\n", step_value);
+  generate_output(state, "PUSHS int@0\n");
+  generate_output(state, "GTS\n");
+  generate_output(state, "PUSHS bool@false\n");
+  generate_output(state, "JUMPIFNEQS %s\n", positive_label);
+
+  generate_output(state, "PUSHS LF@%s\n", node->for_stmt.symbol->unique_name);
+  generate_output(state, "PUSHS LF@%s\n", end_value);
+
+  if (range->range.is_until) {
+    generate_output(state, "GTS\n");
+  } else {
+    generate_output(state, "LTS\n");
+    generate_output(state, "NOTS\n");
+  }
+  generate_output(state, "PUSHS bool@true\n");
+  generate_output(state, "JUMPIFNEQS %s\n", end_label);
+  generate_output(state, "JUMP %s\n", body_label);
+
+  generate_label(state, positive_label);
+  generate_output(state, "PUSHS LF@%s\n", node->for_stmt.symbol->unique_name);
+  generate_output(state, "PUSHS LF@%s\n", end_value);
+  if (range->range.is_until) {
+    generate_output(state, "LTS\n");
+  } else {
+    generate_output(state, "GTS\n");
+    generate_output(state, "NOTS\n");
+  }
+  generate_output(state, "PUSHS bool@true\n");
+  generate_output(state, "JUMPIFNEQS %s\n", end_label);
+
+  generate_label(state, body_label);
+  for (int i = 0; i < node->for_stmt.guards.count; i++) {
+    ast_node_t *guard = node->for_stmt.guards.items[i];
+    if (guard == NULL) {
+      generate_error(state, "Null guard in for-loop at index %d", i);
+      return;
+    }
+    generate_expression(state, guard);
+    if (state->error) {
+      return;
+    }
+    generate_output(state, "PUSHS bool@true\n");
+    generate_output(state, "JUMPIFNEQS %s\n", increment_label);
+  }
+
+  generate_block(state, node->for_stmt.body);
+  if (state->error) {
+    return;
+  }
+
+  generate_label(state, increment_label);
+  generate_output(state, "PUSHS LF@%s\n", node->for_stmt.symbol->unique_name);
+  generate_output(state, "PUSHS LF@%s\n", step_value);
+  generate_output(state, "ADDS\n");
+  generate_output(state, "POPS LF@%s\n", node->for_stmt.symbol->unique_name);
+  generate_output(state, "JUMP %s\n", loop_label);
+  generate_label(state, end_label);
 }
 
 /*
@@ -2021,7 +2247,7 @@ static void generate_chr(generator_state_t *state) {
 
 // TODO: implement the additional functions
 static void generate_readBoolean(generator_state_t *state) {
-  generate_error(state, "readBoolean code generation is not implemented");
+  generate_builtin_read(state, "bool");
 }
 
 static void generate_readIntMaybe(generator_state_t *state) {
