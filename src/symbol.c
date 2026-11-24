@@ -1,7 +1,7 @@
 /*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    symbol.c
- * Authors: Michal Řezníček (xreznim00)
+ * Authors: Michal Řezníček (xreznim00), Adam James Fisher (xfishea00)
  * Brief:   symbols of the semantic analysis
  */
 
@@ -10,6 +10,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// AI-generated skeleton (Claude Opus 5.5): struct symbol and prototypes
+// in symbol.h, structure of symbol_new and symbols_free_all,
+// scope_enter_global and scope_restore; the rest written by hand.
+// Prompt: "priprav kostru struktury symbolu, symbol_new a symbols_free_all
+//          pro globalni seznam a prepinani na globalni rozsah, jen s TODO"
 
 #define SYMBOLS_INIT_CAPACITY 16
 
