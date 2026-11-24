@@ -113,8 +113,12 @@ type_t *match_type(void) {
   case TOK_KW_LIST:
     match(TOK_KW_LIST);
     match(TOK_LBRACKET);
-    match_type();
+    type_t *element_type = match_type();
     match(TOK_RBRACKET);
+    type = type_list(element_type);
+    if (type == NULL) {
+      internal_error();
+    }
     break;
   default:
     syntax_error("Unexpected token in expect_type");

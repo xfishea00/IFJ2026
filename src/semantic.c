@@ -197,6 +197,20 @@ static int sem_stmt(ast_node_t *stmt) {
     if (rc != ERR_OK) {
       return rc;
     }
+    //checks that declared type is same as list member type
+    if(stmt->var_def.init->kind == AST_LIST_LIT){
+      type_kind_t decl_type_kind = stmt->var_def.decl_type->list_type;
+      type_kind_t first_item_type;
+      if (stmt->var_def.init->list_lit.items.count != 0){
+        first_item_type = stmt->var_def.init->list_lit.items.items[0]->type->kind;
+        if (decl_type_kind != first_item_type){
+          rc = 6;
+        }
+        if (rc != ERR_OK) {
+        return rc;
+        }
+      }
+    }
     rc = check_type(stmt->var_def.decl_type);
     if (rc != ERR_OK) {
       return rc;

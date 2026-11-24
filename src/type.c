@@ -18,10 +18,36 @@ static type_t unit_type = {.kind = T_UNIT};
 
 #define TYPES_INIT_CAPACITY 16
 
-// all types created by type_named, released only at the end
+// dynamically allocated types, released only at the end
 static type_t **types;
 static int type_count;
 static int type_capacity;
+
+static type_t *type_new_owned(void) {
+  if (type_count >= type_capacity) {
+    int new_capacity;
+    if (type_capacity == 0) {
+      new_capacity = TYPES_INIT_CAPACITY;
+    } else {
+      new_capacity = type_capacity * 2;
+    }
+    type_t **tmp = realloc(types, new_capacity * sizeof(type_t *));
+    if (tmp == NULL) {
+      return NULL;
+    }
+    types = tmp;
+    type_capacity = new_capacity;
+  }
+
+  type_t *new_type = malloc(sizeof(type_t));
+  if (new_type == NULL) {
+    return NULL;
+  }
+  new_type->name = NULL;
+  new_type->list_type = T_UNKNOWN;
+  types[type_count++] = new_type;
+  return new_type;
+}
 
 type_t *type_int(void) { return &int_type; }
 type_t *type_double(void) { return &double_type; }
@@ -54,28 +80,26 @@ bool type_equal(type_t *a, type_t *b) {
 }
 
 type_t *type_named(char *name) {
-  if (type_count >= type_capacity) {
-    int new_capacity;
-    if (type_capacity == 0) {
-      new_capacity = TYPES_INIT_CAPACITY;
-    } else {
-      new_capacity = type_capacity * 2;
-    }
-    type_t **tmp = realloc(types, new_capacity * sizeof(type_t *));
-    if (tmp == NULL) {
-      return NULL;
-    }
-    types = tmp;
-    type_capacity = new_capacity;
-  }
-
-  type_t *new_type = malloc(sizeof(type_t));
+  type_t *new_type = type_new_owned();
   if (new_type == NULL) {
     return NULL;
   }
   new_type->kind = T_NAMED;
   new_type->name = name;
-  types[type_count++] = new_type;
+  return new_type;
+}
+
+type_t *type_list(type_t *element_type) {
+  if (element_type == NULL) {
+    return NULL;
+  }
+
+  type_t *new_type = type_new_owned();
+  if (new_type == NULL) {
+    return NULL;
+  }
+  new_type->kind = T_LIST;
+  new_type->list_type = element_type->kind;
   return new_type;
 }
 

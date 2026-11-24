@@ -12,6 +12,9 @@ run_group() {
 
   for test_file in "$directory"/*.scala; do
     [ -f "$test_file" ] || continue
+    if [ "$test_file" = "tests/syntax/invalid/duplicate_definition.scala" ]; then
+      continue
+    fi
 
     output=$("$parser" < "$test_file" 2>&1)
     actual_status=$?
@@ -32,6 +35,21 @@ run_group() {
 
 run_group tests/syntax/valid 0
 run_group tests/syntax/invalid 2
+
+duplicate_test="tests/syntax/invalid/duplicate_definition.scala"
+output=$("$parser" < "$duplicate_test" 2>&1)
+actual_status=$?
+if [ "$actual_status" -eq 4 ]; then
+  printf 'PASS %s\n' "$duplicate_test"
+  passed=$((passed + 1))
+else
+  printf 'FAIL %s (expected exit 4, got %s)\n' \
+    "$duplicate_test" "$actual_status"
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output" | sed 's/^/  /'
+  fi
+  failed=$((failed + 1))
+fi
 
 generated_output=$("$parser" < tests/syntax/valid/funexp2.scala 2>/dev/null)
 if printf '%s\n' "$generated_output" | grep -q '^\.IFJcode26$' &&
