@@ -13,92 +13,55 @@
 
 precedence_terminal_t map_token_to_precedence(token_t t) {
   if (t.type == TOK_ID && t.string_val != NULL &&
-      (strcmp(t.string_val, "to") == 0 || strcmp(t.string_val, "until") == 0 ||
-       strcmp(t.string_val, "by") == 0)) {
+      ( strcmp(t.string_val, "to") == 0 || 
+        strcmp(t.string_val, "until") == 0 ||
+        strcmp(t.string_val, "by") == 0)) {
     return PRE_END;
   }
   switch (t.type) {
-  case TOK_ID:
-    return PRE_ID;
-  case TOK_INT_LIT:
-    return PRE_ID;
-  case TOK_DOUBLE_LIT:
-    return PRE_ID;
-  case TOK_STRING_LIT:
-    return PRE_ID;
-  case TOK_KW_TRUE:
-    return PRE_ID;
-  case TOK_KW_FALSE:
-    return PRE_ID;
-  case TOK_PLUS:
-    return PRE_PLUS;
-  case TOK_MINUS:
-    return PRE_MINUS;
-  case TOK_CONCAT:
-    return PRE_CONCAT;
-  case TOK_MUL:
-    return PRE_MUL;
-  case TOK_DIV:
-    return PRE_DIV;
-  case TOK_LT:
-    return PRE_LT;
-  case TOK_GT:
-    return PRE_GT;
-  case TOK_LE:
-    return PRE_LE;
-  case TOK_GE:
-    return PRE_GE;
-  case TOK_EQ:
-    return PRE_EQ;
-  case TOK_NEQ:
-    return PRE_NEQ;
-  case TOK_NOT:
-    return PRE_NOT;
-  case TOK_AND:
-    return PRE_AND;
-  case TOK_OR:
-    return PRE_OR;
-  case TOK_DOT:
-    return PRE_DOT;
-  case TOK_LPAR:
-    return PRE_LPAR;
-  case TOK_RPAR:
-    return PRE_RPAR;
-  case TOK_NEWLINE:
-    return PRE_END;
-  case TOK_DEDENT:
-    return PRE_END;
-  case TOK_COMMA:
-    return PRE_END;
-  case TOK_COLON:
-    return PRE_END;
-  case TOK_SEMICOLON:
-    return PRE_END;
-  case TOK_KW_THEN:
-    return PRE_END;
-  case TOK_KW_DO:
-    return PRE_END;
-  case TOK_KW_ELSE:
-    return PRE_END;
-  case TOK_LARROW:
-    return PRE_END;
-  case TOK_RBRACKET:
-    return PRE_END;
-  case TOK_LBRACKET:
-    return PRE_END;
-  case TOK_ARROW:
-    return PRE_END;
-  case TOK_PIPE:
-    return PRE_END;
-  case TOK_EOF:
-    return PRE_END;
-  default:
-    return PRE_INVALID;
+    case TOK_ID:         return PRE_ID;
+    case TOK_INT_LIT:    return PRE_ID;
+    case TOK_DOUBLE_LIT: return PRE_ID;
+    case TOK_STRING_LIT: return PRE_ID;
+    case TOK_KW_TRUE:    return PRE_ID;
+    case TOK_KW_FALSE:   return PRE_ID;
+    case TOK_PLUS:       return PRE_PLUS;
+    case TOK_MINUS:      return PRE_MINUS;
+    case TOK_CONCAT:     return PRE_CONCAT;
+    case TOK_MUL:        return PRE_MUL;
+    case TOK_DIV:        return PRE_DIV;
+    case TOK_LT:         return PRE_LT;
+    case TOK_GT:         return PRE_GT;
+    case TOK_LE:         return PRE_LE;
+    case TOK_GE:         return PRE_GE;
+    case TOK_EQ:         return PRE_EQ;
+    case TOK_NEQ:        return PRE_NEQ;
+    case TOK_NOT:        return PRE_NOT;
+    case TOK_AND:        return PRE_AND;
+    case TOK_OR:         return PRE_OR;
+    case TOK_DOT:        return PRE_DOT;
+    case TOK_LPAR:       return PRE_LPAR;
+    case TOK_RPAR:       return PRE_RPAR;
+    case TOK_NEWLINE:    return PRE_END;
+    case TOK_DEDENT:     return PRE_END;
+    case TOK_COMMA:      return PRE_END;
+    case TOK_COLON:      return PRE_END;
+    case TOK_SEMICOLON:  return PRE_END;
+    case TOK_KW_THEN:    return PRE_END;
+    case TOK_KW_DO:      return PRE_END;
+    case TOK_KW_ELSE:    return PRE_END;
+    case TOK_LARROW:     return PRE_END;
+    case TOK_RBRACKET:   return PRE_END;
+    case TOK_LBRACKET:   return PRE_END;
+    case TOK_ARROW:      return PRE_END;
+    case TOK_PIPE:       return PRE_END;
+    case TOK_EOF:        return PRE_END;
+    default:             return PRE_INVALID;
   }
 }
 
 const precedence_t table[TERMINATOR_NUM][TERMINATOR_NUM] = {
-    //          id  +  - ++  *  /  <  > <= >= == !=  ! && ||  .  (  )  $
+    //       id  +  - ++  *  /  <  > <= >= == !=  ! && ||  .  (  )  $
     /* id */ {X, H, H, H, H, H, H, H, H, H, H, H, X, H, H, H, X, H, H},
     /* +  */ {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
     /* -  */ {L, H, H, H, L, L, H, H, H, H, H, H, L, H, H, L, L, H, H},
@@ -125,15 +88,15 @@ const stack_element_t less_marker = {.type = STACK_MARKER};
 const stack_element_t expression = {.type = STACK_EXPRESSION};
 
 const rule_t rules[RULE_NUM] = {
-    {.n = 1, .left_side = expression, .right_side = "E + E"},
-    {.n = 2, .left_side = expression, .right_side = "E - E"},
-    {.n = 3, .left_side = expression, .right_side = "E ++ E"},
-    {.n = 4, .left_side = expression, .right_side = "E * E"},
-    {.n = 5, .left_side = expression, .right_side = "E / E"},
-    {.n = 6, .left_side = expression, .right_side = "E < E"},
-    {.n = 7, .left_side = expression, .right_side = "E > E"},
-    {.n = 8, .left_side = expression, .right_side = "E <= E"},
-    {.n = 9, .left_side = expression, .right_side = "E >= E"},
+    {.n = 1,  .left_side = expression, .right_side = "E + E"},
+    {.n = 2,  .left_side = expression, .right_side = "E - E"},
+    {.n = 3,  .left_side = expression, .right_side = "E ++ E"},
+    {.n = 4,  .left_side = expression, .right_side = "E * E"},
+    {.n = 5,  .left_side = expression, .right_side = "E / E"},
+    {.n = 6,  .left_side = expression, .right_side = "E < E"},
+    {.n = 7,  .left_side = expression, .right_side = "E > E"},
+    {.n = 8,  .left_side = expression, .right_side = "E <= E"},
+    {.n = 9,  .left_side = expression, .right_side = "E >= E"},
     {.n = 10, .left_side = expression, .right_side = "E == E"},
     {.n = 11, .left_side = expression, .right_side = "E != E"},
     {.n = 12, .left_side = expression, .right_side = "!E"},
@@ -145,9 +108,9 @@ const rule_t rules[RULE_NUM] = {
 
 bool is_boundary(token_type_t t) {
   switch (t) {
+  case TOK_RPAR:
   case TOK_NEWLINE:
   case TOK_DEDENT:
-  case TOK_RPAR:
   case TOK_COMMA:
   case TOK_COLON:
   case TOK_SEMICOLON:
@@ -166,7 +129,8 @@ bool is_boundary(token_type_t t) {
 }
 
 bool is_not_expression_end(stack_t s, token_type_t current_token_type) {
-  if (s.top >= 1 && s.elements[s.top - 1].type == STACK_TERMINAL &&
+  if (s.top >= 1 && 
+      s.elements[s.top - 1].type == STACK_TERMINAL &&
       s.elements[s.top - 1].terminal == PRE_END &&
       s.elements[s.top].type == STACK_EXPRESSION &&
       is_boundary(current_token_type)) {

@@ -24,9 +24,8 @@ int main(void) {
   ast_node_t *root = parse();
   rc = semantic_analyze(root);
   if (rc == ERR_OK) {
-    //generate_code(root);
+    generate_code(root);
   }
-  ast_print(root);
   ast_free(root);
   symbols_free_all();
   types_free_all();
