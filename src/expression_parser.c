@@ -106,11 +106,9 @@ const rule_t rules[RULE_NUM] = {
     {.n = 16, .left_side = expression, .right_side = "(E)"},
     {.n = 17, .left_side = expression, .right_side = "id"}};
 
-bool is_boundary(token_type_t t, stack_t s) {
+bool is_boundary(token_type_t t) {
   switch (t) {
   case TOK_RPAR:
-    if (is_lpar_in_stack(&s)) return true;
-    else return false;
   case TOK_NEWLINE:
   case TOK_DEDENT:
   case TOK_COMMA:
@@ -135,7 +133,7 @@ bool is_not_expression_end(stack_t s, token_type_t current_token_type) {
       s.elements[s.top - 1].type == STACK_TERMINAL &&
       s.elements[s.top - 1].terminal == PRE_END &&
       s.elements[s.top].type == STACK_EXPRESSION &&
-      is_boundary(current_token_type, s)) {
+      is_boundary(current_token_type)) {
     return false;
   }
   return true;
