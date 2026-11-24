@@ -10,6 +10,7 @@
 
 #include "ast.h"
 
+#include <stddef.h>
 #include <stdio.h>
 
 /*
@@ -26,13 +27,16 @@ typedef struct {
   unsigned int label_counter;
   unsigned int temp_counter;
   bool error;
+  bool buffering_output;
+  char *output_buffer;
+  size_t output_buffer_length;
+  size_t output_buffer_capacity;
 } generator_state_t;
 
 /**
  * @brief Generates code from the AST tree.
  *
- * @return int 0 on success, 99 on internal error, else error code from the
- * semantic analysis
+ * @return int ERR_OK on success or ERR_INTERNAL on code generation failure.
  */
 int generate_code(ast_node_t *root);
 
