@@ -180,6 +180,8 @@ void parse_arg_groups(ast_list_t **lists, int *list_count);
 static ast_node_t *parse_arg_list(void);
 
 static ast_node_t *parse_expression(void);
+static ast_node_t *parse_expression_operators(ast_node_t *left,
+                                              int min_precedence);
 static ast_node_t *parse_expr_match_tail(ast_node_t *subject);
 static ast_node_t *parse_literals(void);
 static ast_node_t *parse_list_def(void);
@@ -442,7 +444,8 @@ static ast_node_t *parse_id_stmt_tail(void) {
     if (check(TOK_KW_MATCH)) {
       return parse_expr_match_tail(call);
     }
-    return call;
+    ast_node_t *expression = parse_expression_operators(call, 1);
+    return expression;
 
   } else if (check(TOK_KW_MATCH)) {
     ast_node_t *subject = ast_new_id(name, line);
@@ -1186,12 +1189,7 @@ void parse_case_list(ast_node_t *subject, ast_list_t *cases) {
       guard = parse_expression();
     }
     match(TOK_ARROW);
-    ast_node_t *body = NULL;
-    if (!check(TOK_NEWLINE)) {
-      body = parse_expression();
-    } else {
-      body = parse_block();
-    }
+    ast_node_t *body = parse_block_statement();
     ast_node_t *case_node = ast_new_case(pattern, guard, body, line);
     if (case_node == NULL) {
       ast_free(pattern);
