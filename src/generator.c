@@ -42,6 +42,8 @@ static void generate_unary_expression(generator_state_t *state,
                                       ast_node_t *node);
 static void generate_binary_expression(generator_state_t *state,
                                        ast_node_t *node);
+static void generate_boolean_expression(generator_state_t *state,
+                                        ast_node_t *node);
 static void generate_function_call(generator_state_t *state, ast_node_t *node);
 static void generate_if_expression(generator_state_t *state, ast_node_t *node);
 static void generate_if(generator_state_t *state, ast_node_t *node);
@@ -95,9 +97,13 @@ static void generate_output(generator_state_t *state, const char *format, ...) {
 
     size_t needed = state->output_buffer_length + (size_t)required + 1;
     if (needed > state->output_buffer_capacity) {
-      size_t capacity = state->output_buffer_capacity == 0
-                            ? 256
-                            : state->output_buffer_capacity;
+      size_t capacity;
+      if(state->output_buffer_capacity == 0){
+        capacity = 256;
+      } else{
+        capacity = state->output_buffer_capacity;
+      }
+
       while (capacity < needed) {
         if (capacity > SIZE_MAX / 2) {
           capacity = needed;
@@ -160,7 +166,7 @@ static void generate_temp_name(generator_state_t *state, char *buffer,
     }
     return;
   }
-  int n = snprintf(buffer, buffer_size, "$temp@%u", state->temp_counter++);
+  int n = snprintf(buffer, buffer_size, "$temp_%u", state->temp_counter++);
   if (n < 0 || (size_t)n >= buffer_size) {
     generate_error(state, "Temporary variable name buffer overflow");
   }
@@ -1031,6 +1037,11 @@ static void generate_binary_expression(generator_state_t *state,
     return;
   }
 
+  if (node->binary.op == OP_AND || node->binary.op == OP_OR) {
+    generate_boolean_expression(state, node);
+    return;
+  }
+
   generate_expression(state, node->binary.left);
 
   if (state->error) {
@@ -1076,12 +1087,6 @@ static void generate_binary_expression(generator_state_t *state,
   case OP_NEQ:
     generate_output(state, "EQS\n"
                            "NOTS\n");
-    break;
-  case OP_AND:
-    generate_output(state, "ANDS\n");
-    break;
-  case OP_OR:
-    generate_output(state, "ORS\n");
     break;
   case OP_CONCAT:
     generate_output(state, "DEFVAR LF@temp0\n"
@@ -1164,9 +1169,47 @@ static void generate_function_call(generator_state_t *state, ast_node_t *node) {
  */
 static void generate_boolean_expression(generator_state_t *state,
                                         ast_node_t *node) {
-  (void)node;
-  generate_error(state, "Boolean expression code generation is not "
-                        "implemented");
+  if (state == NULL || node == NULL || node->kind != AST_BINARY ||
+      (node->binary.op != OP_AND && node->binary.op != OP_OR) ||
+      node->binary.left == NULL || node->binary.right == NULL) {
+    if (state != NULL) {
+      generate_error(state, "Invalid boolean expression");
+    }
+    return;
+  }
+
+  char short_eval_label[64];
+  char end_label[64];
+  generate_label_name(state, short_eval_label,
+                      sizeof(short_eval_label));
+  generate_label_name(state, end_label, sizeof(end_label));
+  if (state->error) {
+    return;
+  }
+
+  bool is_and = node->binary.op == OP_AND;
+  const char *short_value;
+  if(is_and){
+    short_value = "false";
+  } else {
+    short_value = "true";
+  }
+  generate_expression(state, node->binary.left);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "PUSHS bool@%s\n", short_value);
+  generate_output(state, "JUMPIFEQS %s\n", short_eval_label);
+
+  generate_expression(state, node->binary.right);
+  if (state->error) {
+    return;
+  }
+  generate_output(state, "JUMP %s\n", end_label);
+
+  generate_label(state, short_eval_label);
+  generate_output(state, "PUSHS bool@%s\n", short_value);
+  generate_label(state, end_label);
 }
 
 /**
