@@ -92,6 +92,8 @@ void match_literal() {
   }
 }
 
+static char *take_string(void);
+
 type_t *match_type(void) {
   type_t *type = type_from_token(peek());
   switch (peek()) {
@@ -100,8 +102,13 @@ type_t *match_type(void) {
   case TOK_KW_STRING:
   case TOK_KW_UNIT:
   case TOK_KW_BOOLEAN:
-  case TOK_ID:
     advance();
+    break;
+  case TOK_ID:
+    type = type_named(take_string());
+    if (type == NULL) {
+      internal_error();
+    }
     break;
   case TOK_KW_LIST:
     match(TOK_KW_LIST);

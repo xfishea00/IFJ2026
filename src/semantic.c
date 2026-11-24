@@ -111,6 +111,18 @@ static int check_main(ast_node_t *program) {
   return ERR_OK;
 }
 
+// T_NAMED must be a class or alias
+static int check_type(type_t *type) {
+  if (type == NULL || type->kind != T_NAMED) {
+    return ERR_OK;
+  }
+  symbol_t *sym = scope_lookup(type->name);
+  if (sym == NULL || (sym->kind != SYM_CLASS && sym->kind != SYM_ALIAS)) {
+    return ERR_SEM_UNDEF;
+  }
+  return ERR_OK;
+}
+
 // analyzes function body
 static int analyze_function(symbol_t *func) {
   symbol_t *saved_function = current_function;
@@ -121,13 +133,17 @@ static int analyze_function(symbol_t *func) {
     scope_restore(saved);
     return ERR_INTERNAL;
   }
-  int rc = ERR_OK;
+  int rc = check_type(func->decl->func_def.ret_type);
 
   for (int i = 0; rc == ERR_OK && i < func->decl->func_def.param_list_count;
        i++) {
     ast_list_t *param_list = &func->decl->func_def.param_lists[i];
     for (int j = 0; rc == ERR_OK && j < param_list->count; j++) {
       ast_node_t *param = param_list->items[j];
+      rc = check_type(param->param.decl_type);
+      if (rc != ERR_OK) {
+        break;
+      }
       symbol_t *sym = symbol_new(SYM_VAR, param->param.name, param);
       if (sym == NULL) {
         rc = ERR_INTERNAL;
@@ -178,6 +194,10 @@ static int sem_stmt(ast_node_t *stmt) {
   case AST_VAR_DEF: {
     // init first, val x = x + 1 uses outer x
     int rc = sem_expr(stmt->var_def.init);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+    rc = check_type(stmt->var_def.decl_type);
     if (rc != ERR_OK) {
       return rc;
     }

@@ -32,7 +32,8 @@ typedef struct type type_t;
 
 struct type {
   type_kind_t kind;
-  // TODO: fields for List, union and named types
+  char *name; // class or alias name
+  // TODO: fields for List, union types
 };
 
 // base types, each returns the one static instance
@@ -43,6 +44,10 @@ type_t *type_bool(void);
 type_t *type_unit(void);
 // base type for a type keyword token, NULL for other tokens
 type_t *type_from_token(token_type_t token);
+// new T_NAMED type, name is taken over
+type_t *type_named(char *name);
+// releases all types created by type_named
+void types_free_all(void);
 
 // true if both types are the same
 bool type_equal(type_t *a, type_t *b);

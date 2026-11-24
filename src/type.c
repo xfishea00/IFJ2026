@@ -10,11 +10,18 @@
 #include <stdlib.h>
 
 // one static instance for each base type, never freed
-static type_t int_type = {T_INT};
-static type_t double_type = {T_DOUBLE};
-static type_t string_type = {T_STRING};
-static type_t bool_type = {T_BOOL};
-static type_t unit_type = {T_UNIT};
+static type_t int_type = {.kind = T_INT};
+static type_t double_type = {.kind = T_DOUBLE};
+static type_t string_type = {.kind = T_STRING};
+static type_t bool_type = {.kind = T_BOOL};
+static type_t unit_type = {.kind = T_UNIT};
+
+#define TYPES_INIT_CAPACITY 16
+
+// all types created by type_named, released only at the end
+static type_t **types;
+static int type_count;
+static int type_capacity;
 
 type_t *type_int(void) { return &int_type; }
 type_t *type_double(void) { return &double_type; }
@@ -44,4 +51,41 @@ bool type_equal(type_t *a, type_t *b) {
     return false;
   }
   return a->kind == b->kind;
+}
+
+type_t *type_named(char *name) {
+  if (type_count >= type_capacity) {
+    int new_capacity;
+    if (type_capacity == 0) {
+      new_capacity = TYPES_INIT_CAPACITY;
+    } else {
+      new_capacity = type_capacity * 2;
+    }
+    type_t **tmp = realloc(types, new_capacity * sizeof(type_t *));
+    if (tmp == NULL) {
+      return NULL;
+    }
+    types = tmp;
+    type_capacity = new_capacity;
+  }
+
+  type_t *new_type = malloc(sizeof(type_t));
+  if (new_type == NULL) {
+    return NULL;
+  }
+  new_type->kind = T_NAMED;
+  new_type->name = name;
+  types[type_count++] = new_type;
+  return new_type;
+}
+
+void types_free_all(void) {
+  for (int i = 0; i < type_count; i++) {
+    free(types[i]->name);
+    free(types[i]);
+  }
+  free(types);
+  types = NULL;
+  type_count = 0;
+  type_capacity = 0;
 }

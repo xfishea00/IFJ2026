@@ -11,6 +11,7 @@
 #include "scanner.h"
 #include "semantic.h"
 #include "symbol.h"
+#include "type.h"
 #include <stdio.h>
 
 int main(void) {
@@ -28,6 +29,7 @@ int main(void) {
 
   ast_free(root);
   symbols_free_all();
+  types_free_all();
   scanner_free();
 
   return rc;
