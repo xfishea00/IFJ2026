@@ -53,6 +53,17 @@ bool type_equal(type_t *a, type_t *b) {
   return a->kind == b->kind;
 }
 
+bool type_compatible(type_t *expected, type_t *actual) {
+  if (type_equal(expected, actual)) {
+    return true;
+  }
+  if (expected != NULL && actual != NULL && expected->kind == T_DOUBLE &&
+      actual->kind == T_INT) {
+    return true; // implicit conversion from Int to Double
+  }
+  return false;
+}
+
 type_t *type_named(char *name) {
   if (type_count >= type_capacity) {
     int new_capacity;

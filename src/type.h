@@ -52,4 +52,7 @@ void types_free_all(void);
 // true if both types are the same
 bool type_equal(type_t *a, type_t *b);
 
+// true if a value of type actual can be used where expected is required
+bool type_compatible(type_t *expected, type_t *actual);
+
 #endif // TYPE_H

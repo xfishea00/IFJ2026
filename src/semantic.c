@@ -150,6 +150,7 @@ static int analyze_function(symbol_t *func) {
         break;
       }
       sym->is_mutable = false; // parameters are immutable
+      sym->type = param->param.decl_type;
       rc = scope_define(sym);
       if (rc != ERR_OK) {
         break;
@@ -201,11 +202,22 @@ static int sem_stmt(ast_node_t *stmt) {
     if (rc != ERR_OK) {
       return rc;
     }
+    // init must match the declared type
+    if (stmt->var_def.decl_type != NULL && stmt->var_def.init->type != NULL &&
+        !type_compatible(stmt->var_def.decl_type, stmt->var_def.init->type)) {
+      return ERR_SEM_TYPE;
+    }
+
     symbol_t *sym = symbol_new(SYM_VAR, stmt->var_def.name, stmt);
     if (sym == NULL) {
       return ERR_INTERNAL;
     }
     sym->is_mutable = stmt->var_def.is_mutable;
+    if (stmt->var_def.decl_type != NULL) {
+      sym->type = stmt->var_def.decl_type;
+    } else {
+      sym->type = stmt->var_def.init->type;
+    }
     rc = scope_define(sym);
     if (rc != ERR_OK) {
       return rc;
@@ -225,6 +237,11 @@ static int sem_stmt(ast_node_t *stmt) {
     }
     if (sym->kind != SYM_VAR || !sym->is_mutable) {
       return ERR_SEM_IMMUTABLE;
+    }
+    // value must match the type of the variable
+    if (sym->type != NULL && stmt->assign.value->type != NULL &&
+        !type_compatible(sym->type, stmt->assign.value->type)) {
+      return ERR_SEM_TYPE;
     }
     stmt->assign.symbol = sym;
     return ERR_OK;
@@ -397,12 +414,14 @@ static int sem_match(ast_node_t *match) {
       scope_pop();
       return rc;
     }
+
     scope_pop();
     if (branch->case_branch.pattern->kind == AST_PAT_WILDCARD &&
         branch->case_branch.guard == NULL) {
       has_default = true;
     }
   }
+
   if (!has_default) {
     return ERR_SEM_OTHER; // no default case
   }
@@ -418,6 +437,10 @@ static int sem_expr(ast_node_t *expr) {
       return ERR_SEM_UNDEF;
     }
     expr->id.symbol = sym;
+    if (sym->kind == SYM_VAR) {
+      expr->type = sym->type;
+    }
+
     if (sym->kind == SYM_FUNC) {
       // function used without parentheses
       if (sym->is_builtin || sym->decl->func_def.param_list_count != 0) {
@@ -441,6 +464,7 @@ static int sem_expr(ast_node_t *expr) {
       return ERR_SEM_UNDEF;
     }
     expr->call.symbol = sym;
+
     if (sym->kind == SYM_CLASS) { // constructor Point(1, 2)
       if (expr->call.arg_list_count != 1 ||
           expr->call.arg_lists[0].count != sym->decl->case_class.attrs.count) {
@@ -469,6 +493,7 @@ static int sem_expr(ast_node_t *expr) {
           return ERR_SEM_ARGS;
         }
       }
+
       // no return type, IN_PROGRESS means recursion
       if (def->func_def.ret_type == NULL) {
         if (sym->state == FUNC_IN_PROGRESS) {
@@ -489,6 +514,14 @@ static int sem_expr(ast_node_t *expr) {
         int rc = sem_expr(arg_list->items[j]);
         if (rc != ERR_OK) {
           return rc;
+        }
+        if (sym->kind == SYM_FUNC && !sym->is_builtin) {
+          type_t *param_type =
+              sym->decl->func_def.param_lists[i].items[j]->param.decl_type;
+          if (param_type != NULL && arg_list->items[j]->type != NULL &&
+              !type_compatible(param_type, arg_list->items[j]->type)) {
+            return ERR_SEM_ARGS;
+          }
         }
       }
     }
