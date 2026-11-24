@@ -310,9 +310,102 @@ static int sem_stmt(ast_node_t *stmt) {
   }
 }
 
-// match expression
+// defines variables of a case pattern in the current scope
+static int sem_pattern(ast_node_t *pat) {
+  switch (pat->kind) {
+  case AST_LITERAL:
+  case AST_PAT_WILDCARD:
+    return ERR_OK; // defines nothing
+
+  case AST_PAT_TYPED: {
+    int rc = check_type(pat->pat_typed.decl_type);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+    symbol_t *sym = symbol_new(SYM_VAR, pat->pat_typed.name, pat);
+    if (sym == NULL) {
+      return ERR_INTERNAL;
+    }
+    sym->is_mutable = false;
+    rc = scope_define(sym);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+    pat->pat_typed.symbol = sym;
+    return ERR_OK;
+  }
+
+  case AST_PAT_CLASS: {
+    symbol_t *sym = scope_lookup(pat->pat_class.name);
+    if (sym == NULL || sym->kind != SYM_CLASS) {
+      return ERR_SEM_UNDEF;
+    }
+    if (sym->decl->case_class.attrs.count != pat->pat_class.bindings.count) {
+      return ERR_SEM_ARGS;
+    }
+    for (int i = 0; i < pat->pat_class.bindings.count; i++) {
+      ast_node_t *binding = pat->pat_class.bindings.items[i];
+      if (binding->id.name == NULL) {
+        continue; // _ defines nothing
+      }
+      symbol_t *var = symbol_new(SYM_VAR, binding->id.name, binding);
+      if (var == NULL) {
+        return ERR_INTERNAL;
+      }
+      var->is_mutable = false;
+      int rc = scope_define(var);
+      if (rc != ERR_OK) {
+        return rc;
+      }
+      binding->id.symbol = var;
+    }
+    return ERR_OK;
+  }
+
+  default:
+    return ERR_INTERNAL;
+  }
+}
+
+// match expression, every case has its own scope
 static int sem_match(ast_node_t *match) {
-  // TODO
+  int rc = sem_expr(match->match.subject);
+  if (rc != ERR_OK) {
+    return rc;
+  }
+  bool has_default = false;
+
+  for (int i = 0; i < match->match.cases.count; i++) {
+    ast_node_t *branch = match->match.cases.items[i];
+    if (!scope_push()) {
+      return ERR_INTERNAL;
+    }
+    rc = sem_pattern(branch->case_branch.pattern);
+    if (rc != ERR_OK) {
+      scope_pop();
+      return rc;
+    }
+    if (branch->case_branch.guard != NULL) {
+      rc = sem_expr(branch->case_branch.guard);
+      if (rc != ERR_OK) {
+        scope_pop();
+        return rc;
+      }
+    }
+    rc = sem_block(branch->case_branch.body);
+    if (rc != ERR_OK) {
+      scope_pop();
+      return rc;
+    }
+    scope_pop();
+    if (branch->case_branch.pattern->kind == AST_PAT_WILDCARD &&
+        branch->case_branch.guard == NULL) {
+      has_default = true;
+    }
+  }
+  if (!has_default) {
+    return ERR_SEM_OTHER; // no default case
+  }
   return ERR_OK;
 }
 
