@@ -64,3 +64,16 @@ void stack_insert(stack_t *s, stack_element_t t, int pos) {
   }
   s->elements[pos] = t;
 }
+
+bool is_lpar_in_stack(stack_t *s) {
+  if (is_empty(s)) {
+    stack_error("Empty stack\n");
+  }
+  for (int i = s->top; i >= 0; i--) {
+    if (s->elements[i].type == STACK_TERMINAL &&
+        s->elements[i].terminal == PRE_LPAR) {
+      return true;
+    }
+  }
+  return false;
+}

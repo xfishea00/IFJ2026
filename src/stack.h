@@ -33,5 +33,8 @@ int stack_top_element_type_pos(
 void stack_insert(
     stack_t *s, stack_element_t t,
     int pos); // inserts an element at a specific position on the stack
+bool is_lpar_in_stack(stack_t *s); // returns true if left parenthesis is on stack
+                                   // to check when encountering right parenthesis
+                                   // on input stream
 
 #endif

@@ -75,9 +75,7 @@ typedef int (*advance_token_f)(token_t *);
 #define RULE_NUM 17       // number of rules
 
 precedence_terminal_t
-    map_token_to_precedence(token_t); // maps tokens to precedence terminals
-bool is_boundary(token_type_t t); // returns true for tokens that are not a part
-                                  // of an expression
+map_token_to_precedence(token_t); // maps tokens to precedence terminals
 int parse_non_id_expression(token_t *current_token,
                             advance_token_f advance_token); // parses expression
 
