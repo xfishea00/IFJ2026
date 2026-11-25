@@ -765,6 +765,18 @@ static ast_node_t *parse_arg_list(void) {
 static ast_node_t *parse_expression_primary(void) {
   int line = current_line;
 
+  if (check(TOK_MINUS) || check(TOK_NOT)) {
+    ast_op_t op = check(TOK_MINUS) ? OP_NEG : OP_NOT;
+    advance();
+    ast_node_t *operand = parse_expression_primary();
+    ast_node_t *unary = ast_new_unary(op, operand, line);
+    if (unary == NULL) {
+      ast_free(operand);
+      internal_error();
+    }
+    return unary;
+  }
+
   if (check(TOK_KW_LIST)) {
     match(TOK_KW_LIST);
     if (check(TOK_DOT)) {
@@ -1130,7 +1142,7 @@ static ast_node_t *parse_expression(void) {
   }
 
   if (check(TOK_KW_LIST) || check(TOK_ID) || check_literal() ||
-      check(TOK_LPAR)) {
+      check(TOK_LPAR) || check(TOK_MINUS) || check(TOK_NOT)) {
     ast_node_t *left = parse_expression_primary();
     if (left == NULL) {
       internal_error();

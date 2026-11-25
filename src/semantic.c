@@ -21,6 +21,59 @@ static int sem_expr(ast_node_t *expr);
 
 static symbol_t *current_function;
 
+static type_kind_t list_item_type_kind(const ast_node_t *item) {
+  if (item->kind == AST_LIST_LIT) {
+    return T_LIST;
+  }
+  if (item->type == NULL) {
+    return T_UNKNOWN;
+  }
+  return item->type->kind;
+}
+
+static int check_list_literal_homogeneity(ast_node_t *list) {
+  type_kind_t expected_kind = T_UNKNOWN;
+
+  for (int i = 0; i < list->list_lit.items.count; i++) {
+    ast_node_t *item = list->list_lit.items.items[i];
+    int rc = sem_expr(item);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+
+    type_kind_t item_kind = list_item_type_kind(item);
+    if (item_kind == T_UNKNOWN) {
+      continue;
+    }
+    if (expected_kind == T_UNKNOWN) {
+      expected_kind = item_kind;
+    } else if (item_kind != expected_kind) {
+      return ERR_SEM_TYPE;
+    }
+  }
+
+  return ERR_OK;
+}
+
+static int check_list_literal_expected_type(const ast_node_t *list,
+                                            const type_t *expected_type) {
+  if (list->kind != AST_LIST_LIT || expected_type == NULL) {
+    return ERR_OK;
+  }
+  if (expected_type->kind != T_LIST) {
+    return ERR_SEM_TYPE;
+  }
+
+  for (int i = 0; i < list->list_lit.items.count; i++) {
+    type_kind_t item_kind = list_item_type_kind(list->list_lit.items.items[i]);
+    if (item_kind != T_UNKNOWN && item_kind != expected_type->list_type) {
+      return ERR_SEM_TYPE;
+    }
+  }
+
+  return ERR_OK;
+}
+
 // defines all functions, classes and aliases in the global scope
 static int collect_definitions(ast_node_t *program) {
   for (int i = 0; i < program->program.defs.count; i++) {
@@ -198,19 +251,10 @@ static int sem_stmt(ast_node_t *stmt) {
     if (rc != ERR_OK) {
       return rc;
     }
-    //checks that declared type is same as list member type
-    if(stmt->var_def.init->kind == AST_LIST_LIT){
-      type_kind_t decl_type_kind = stmt->var_def.decl_type->list_type;
-      type_kind_t first_item_type;
-      if (stmt->var_def.init->list_lit.items.count != 0){
-        first_item_type = stmt->var_def.init->list_lit.items.items[0]->type->kind;
-        if (decl_type_kind != first_item_type){
-          rc = 6;
-        }
-        if (rc != ERR_OK) {
-        return rc;
-        }
-      }
+    rc = check_list_literal_expected_type(stmt->var_def.init,
+                                          stmt->var_def.decl_type);
+    if (rc != ERR_OK) {
+      return rc;
     }
     rc = check_type(stmt->var_def.decl_type);
     if (rc != ERR_OK) {
@@ -547,11 +591,58 @@ static int sem_expr(ast_node_t *expr) {
     if (rc == ERR_OK) {
       rc = sem_expr(expr->binary.right);
     }
-    return rc;
+    if (rc != ERR_OK) {
+      return rc;
+    }
+
+    type_t *left_type = expr->binary.left->type;
+    type_t *right_type = expr->binary.right->type;
+    switch (expr->binary.op) {
+    case OP_LT:
+    case OP_GT:
+    case OP_LE:
+    case OP_GE:
+    case OP_EQ:
+    case OP_NEQ:
+    case OP_AND:
+    case OP_OR:
+      expr->type = type_bool();
+      break;
+
+    case OP_ADD:
+    case OP_SUB:
+    case OP_MUL:
+    case OP_DIV:
+      if (left_type != NULL && right_type != NULL &&
+          (left_type->kind == T_INT || left_type->kind == T_DOUBLE) &&
+          (right_type->kind == T_INT || right_type->kind == T_DOUBLE)) {
+        expr->type = left_type->kind == T_DOUBLE || right_type->kind == T_DOUBLE
+                         ? type_double()
+                         : type_int();
+      }
+      break;
+
+    case OP_CONCAT:
+      if (left_type != NULL && right_type != NULL &&
+          left_type->kind == right_type->kind) {
+        expr->type = left_type;
+      }
+      break;
+
+    default:
+      break;
+    }
+    return ERR_OK;
   }
 
-  case AST_UNARY:
-    return sem_expr(expr->unary.operand);
+  case AST_UNARY: {
+    int rc = sem_expr(expr->unary.operand);
+    if (rc != ERR_OK) {
+      return rc;
+    }
+    expr->type = expr->unary.operand->type;
+    return ERR_OK;
+  }
 
   case AST_LITERAL:
     return ERR_OK;
@@ -571,13 +662,7 @@ static int sem_expr(ast_node_t *expr) {
   }
 
   case AST_LIST_LIT: {
-    for (int i = 0; i < expr->list_lit.items.count; i++) {
-      int rc = sem_expr(expr->list_lit.items.items[i]);
-      if (rc != ERR_OK) {
-        return rc;
-      }
-    }
-    return ERR_OK;
+    return check_list_literal_homogeneity(expr);
   }
 
   case AST_LIST_RANGE: {
