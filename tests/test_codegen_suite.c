@@ -1,4 +1,7 @@
 /*
+ * These tests were created by AI (Copilot Fusion gpt-6-luna)
+ * Promt: "Based on inclueded files and the project structure create complete test file,
+ * so that i can see the expected output and actual output and tests summary."
  * Build from the repository root:
  *   gcc -std=c11 -pedantic -Wall -Wextra tests/test_codegen_suite.c \
  *       -o /tmp/test_codegen_suite
