@@ -3,6 +3,8 @@
  * File:    generator.c
  * Authors: Jaroslav Baček (xbacekj00), Maros Magoč (xmagocm00)
  * Brief:   implementation of the code generator
+ * Doxygen comments were generated using AI (Copilot Fusion gpt-6-luna).
+ * Prompt: "Write basic Doxygen comments to all functions for better orientation."
  */
 
 #include "generator.h"
@@ -218,6 +220,10 @@ static void generate_error(generator_state_t *state, const char *error_message,
   state->error = true;
 }
 
+/**
+ * @brief Discards the value at the top of the data stack.
+ * @param state The generator state.
+ */
 static void generate_discard(generator_state_t *state) {
   char temp_name[64];
   generate_temp_name(state, temp_name, sizeof(temp_name));
@@ -542,6 +548,11 @@ static void generate_function_parameters(generator_state_t *state,
   }
 }
 
+/**
+ * @brief Checks whether an AST node can provide a function's implicit result.
+ * @param node The AST node to check.
+ * @return true if the node is a result expression, false otherwise.
+ */
 static bool is_function_result_expression(const ast_node_t *node) {
   if (node == NULL) {
     return false;
@@ -561,10 +572,20 @@ static bool is_function_result_expression(const ast_node_t *node) {
   }
 }
 
+/**
+ * @brief Checks whether an AST node can provide an if-branch result.
+ * @param node The AST node to check.
+ * @return true if the node is a result expression, false otherwise.
+ */
 static bool is_if_branch_result_expression(const ast_node_t *node) {
   return is_function_result_expression(node);
 }
 
+/**
+ * @brief Generates the statements and result value of an if-expression branch.
+ * @param state The generator state.
+ * @param branch The block representing the branch.
+ */
 static void generate_if_branch_value(generator_state_t *state,
                                      ast_node_t *branch) {
   if (state == NULL || branch == NULL || branch->kind != AST_BLOCK) {
@@ -611,6 +632,11 @@ static void generate_if_branch_value(generator_state_t *state,
   generate_expression(state, result);
 }
 
+/**
+ * @brief Generates a function body and its implicit return, if required.
+ * @param state The generator state.
+ * @param node The AST node representing the function definition.
+ */
 static void generate_function_body(generator_state_t *state, ast_node_t *node) {
   if (state == NULL || node == NULL || node->kind != AST_FUNC_DEF ||
       node->func_def.body == NULL || node->func_def.body->kind != AST_BLOCK) {
@@ -665,6 +691,12 @@ static void generate_function_body(generator_state_t *state, ast_node_t *node) {
   generate_function_return(state, node, has_result);
 }
 
+/**
+ * @brief Emits buffered function code with local variable declarations first.
+ * @param state The generator state.
+ * @param code The buffered function code.
+ * @param code_length The length of the buffered code.
+ */
 static void buffer_function_code(generator_state_t *state, const char *code,
                                  size_t code_length) {
   typedef struct {
@@ -908,6 +940,10 @@ static void generate_return(generator_state_t *state, ast_node_t *node) {
   generate_return_epilogue(state);
 }
 
+/**
+ * @brief Emits the frame cleanup and return instructions.
+ * @param state The generator state.
+ */
 static void generate_return_epilogue(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -1552,7 +1588,7 @@ static void generate_for(generator_state_t *state, ast_node_t *node) {
  */
 
 /**
- * @brief Generates a list from the AST.
+ * @brief Handles an AST node representing a list construction.
  * @param state The generator state.
  * @param node The AST node representing the list.
  */
@@ -1562,7 +1598,7 @@ static void generate_list(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a list access from the AST.
+ * @brief Handles an AST node representing a list access.
  * @param state The generator state.
  * @param node The AST node representing the list access.
  */
@@ -1572,7 +1608,7 @@ static void generate_list_access(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a list operation from the AST.
+ * @brief Handles an AST node representing a list operation.
  * @param state The generator state.
  * @param node The AST node representing the list operation.
  */
@@ -1588,6 +1624,12 @@ static void generate_list_operation(generator_state_t *state,
  * ----------------------------------------------------------------
  */
 
+/**
+ * @brief Finds the one-based array index of a data class attribute.
+ * @param class_decl The data class declaration to search.
+ * @param name The attribute name to find.
+ * @return The attribute index, or -1 if it is not found.
+ */
 static int data_class_attribute_index(const ast_node_t *class_decl,
                                       const char *name) {
   if (class_decl == NULL || class_decl->kind != AST_CASE_CLASS ||
@@ -1605,6 +1647,11 @@ static int data_class_attribute_index(const ast_node_t *class_decl,
   return -1;
 }
 
+/**
+ * @brief Finds the data class declaration corresponding to a named type.
+ * @param type The type to resolve.
+ * @return The matching class declaration, or NULL if none is found.
+ */
 static ast_node_t *data_class_from_type(const type_t *type) {
   if (type == NULL || type->kind != T_NAMED || type->name == NULL ||
       generator_program_root == NULL ||
@@ -1624,6 +1671,11 @@ static ast_node_t *data_class_from_type(const type_t *type) {
   return NULL;
 }
 
+/**
+ * @brief Determines the data class declaration represented by an expression.
+ * @param expr The expression to inspect.
+ * @return The matching class declaration, or NULL if it cannot be determined.
+ */
 static ast_node_t *data_class_from_expression(const ast_node_t *expr) {
   if (expr == NULL) {
     return NULL;
@@ -1670,7 +1722,7 @@ static ast_node_t *data_class_from_expression(const ast_node_t *expr) {
 }
 
 /**
- * @brief Generates a data class definition from the AST.
+ * @brief Handles an AST node representing a data class definition.
  * @param state The generator state.
  * @param node The AST node representing the data class definition.
  */
@@ -1784,7 +1836,7 @@ static void generate_member_access(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a data class member call from the AST.
+ * @brief Handles an AST node representing a data class member call.
  * @param state The generator state.
  * @param node The AST node representing the data class member call.
  */
@@ -1794,7 +1846,7 @@ static void generate_member_call(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a union type definition from the AST.
+ * @brief Handles an AST node representing a union type definition.
  * @param state The generator state.
  * @param node The AST node representing the union type definition.
  */
@@ -1810,7 +1862,7 @@ static void generate_union_type(generator_state_t *state, ast_node_t *node) {
  */
 
 /**
- * @brief Generates a match statement from the AST.
+ * @brief Handles an AST node representing a match statement.
  * @param state The generator state.
  * @param node The AST node representing the match statement.
  */
@@ -1820,7 +1872,7 @@ static void generate_match(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a match case from the AST.
+ * @brief Handles an AST node representing a match case.
  * @param state The generator state.
  * @param node The AST node representing the match case.
  */
@@ -1830,7 +1882,7 @@ static void generate_match_case(generator_state_t *state, ast_node_t *node) {
 }
 
 /**
- * @brief Generates a pattern from the AST.
+ * @brief Handles an AST node representing a match pattern.
  * @param state The generator state.
  * @param node The AST node representing the pattern.
  */
@@ -1882,6 +1934,11 @@ static void generate_string(generator_state_t *state, ast_node_t *node) {
   }
 }
 
+/**
+ * @brief Dispatches a built-in function call to its code generator.
+ * @param state The generator state.
+ * @param node The AST node representing the built-in call.
+ */
 static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
   if (state == NULL || node == NULL || node->kind != AST_CALL ||
       node->call.symbol == NULL) {
@@ -1971,6 +2028,11 @@ static void generate_builtin_call(generator_state_t *state, ast_node_t *node) {
   }
 }
 
+/**
+ * @brief Generates output for the print built-in and pushes its unit result.
+ * @param state The generator state.
+ * @param node The AST node representing the print call.
+ */
 static void generate_print(generator_state_t *state, ast_node_t *node) {
   if (state == NULL) {
     return;
@@ -2014,6 +2076,11 @@ static void generate_print(generator_state_t *state, ast_node_t *node) {
   generate_output(state, "PUSHS nil@nil\n");
 }
 
+/**
+ * @brief Generates a typed input operation and pushes its result.
+ * @param state The generator state.
+ * @param type The IFJcode26 input type.
+ */
 static void generate_builtin_read(generator_state_t *state, const char *type) {
   if (state == NULL || type == NULL) {
     if (state != NULL) {
@@ -2064,6 +2131,10 @@ static void generate_builtin_read(generator_state_t *state, const char *type) {
   generate_output(state, "PUSHS LF@%s\n", temp_name);
 }
 
+/**
+ * @brief Generates conversion of a supported primitive value to a string.
+ * @param state The generator state.
+ */
 static void generate_toStr(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2195,6 +2266,10 @@ static void generate_toStr(generator_state_t *state) {
   // TODO: implement toStr for other types (lists,...)
 }
 
+/**
+ * @brief Generates conversion of a floating-point value to an integer.
+ * @param state The generator state.
+ */
 static void generate_toInt(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2212,6 +2287,10 @@ static void generate_toInt(generator_state_t *state) {
   generate_output(state, "PUSHS LF@%s\n", temp_name);
 }
 
+/**
+ * @brief Generates code to calculate the length of a string.
+ * @param state The generator state.
+ */
 static void generate_strLength(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2238,6 +2317,10 @@ static void generate_strLength(generator_state_t *state) {
   generate_output(state, "PUSHS LF@%s\n", length);
 }
 
+/**
+ * @brief Generates code for the substring built-in.
+ * @param state The generator state.
+ */
 static void generate_subStr(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2394,6 +2477,10 @@ static void generate_subStr(generator_state_t *state) {
   generate_output(state, "LABEL %s\n", label_return);
 }
 
+/**
+ * @brief Generates code to get a character's ordinal value from a string.
+ * @param state The generator state.
+ */
 static void generate_ord(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2476,6 +2563,10 @@ static void generate_ord(generator_state_t *state) {
   generate_output(state, "PUSHS LF@%s\n", result);
 }
 
+/**
+ * @brief Generates code to convert an integer to a character.
+ * @param state The generator state.
+ */
 static void generate_chr(generator_state_t *state) {
   if (state == NULL) {
     return;
@@ -2538,16 +2629,26 @@ static void generate_chr(generator_state_t *state) {
   generate_output(state, "LABEL %s\n", label_end);
 }
 
+/**
+ * @brief Generates a boolean input operation.
+ * @param state The generator state.
+ */
 static void generate_readBoolean(generator_state_t *state) {
   generate_builtin_read(state, "bool");
 }
 
-//TODO: implement function
+/**
+ * @brief Handles a call to the readIntMaybe built-in input function.
+ * @param state The generator state.
+ */
 static void generate_readIntMaybe(generator_state_t *state) {
   generate_error(state, "readIntMaybe code generation is not implemented");
 }
 
-//TODO: implement function
+/**
+ * @brief Handles a call to the readDoubleMaybe built-in input function.
+ * @param state The generator state.
+ */
 static void generate_readDoubleMaybe(generator_state_t *state) {
   generate_error(state, "readDoubleMaybe code generation is not implemented");
 }
