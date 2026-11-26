@@ -60,9 +60,15 @@ static void generate_ord(generator_state_t *state);
 static void generate_chr(generator_state_t *state);
 static void generate_for(generator_state_t *state, ast_node_t *node);
 static void generate_match(generator_state_t *state, ast_node_t *node);
+static void generate_data_class_constructor(generator_state_t *state,
+                                            ast_node_t *node);
+static void generate_member_access(generator_state_t *state, ast_node_t *node);
+static void generate_member_call(generator_state_t *state, ast_node_t *node);
 static void generate_readBoolean(generator_state_t *state);
 static void generate_readIntMaybe(generator_state_t *state);
 static void generate_readDoubleMaybe(generator_state_t *state);
+
+static ast_node_t *generator_program_root;
 
 /*
  * ----------------------------------------------------------------
@@ -251,19 +257,26 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
   for (int i = 0; i < defs->count; i++) {
     ast_node_t *def = defs->items[i];
 
-    if (def == NULL || def->kind != AST_FUNC_DEF) {
+    if (def == NULL) {
       generate_error(state,
                      "Unsupported top-level definition at index %d "
                      "(AST kind %d)",
-                     i, def == NULL ? -1 : (int)def->kind);
+                     i, -1);
       return;
     }
-    if (def->func_def.is_main) {
+    if (def->kind == AST_FUNC_DEF && def->func_def.is_main) {
       if (main_func != NULL) {
         generate_error(state, "Multiple main functions defined");
         return;
       }
       main_func = def;
+    } else if (def->kind != AST_FUNC_DEF && def->kind != AST_CASE_CLASS &&
+               def->kind != AST_TYPE_ALIAS) {
+      generate_error(state,
+                     "Unsupported top-level definition at index %d "
+                     "(AST kind %d)",
+                     i, (int)def->kind);
+      return;
     }
   }
   // Check if the main is defined
@@ -287,7 +300,9 @@ static void generate_program(generator_state_t *state, ast_node_t *root) {
   // Generate code for each function definition
   for (int i = 0; i < defs->count; i++) {
     ast_node_t *def = defs->items[i];
-    generate_function(state, def);
+    if (def->kind == AST_FUNC_DEF) {
+      generate_function(state, def);
+    }
     if (state->error) {
       return;
     }
@@ -350,6 +365,7 @@ static void generate_statement(generator_state_t *state, ast_node_t *node) {
   case AST_LITERAL:
   case AST_BINARY:
   case AST_UNARY:
+  case AST_MEMBER:
     generate_expression(state, node);
     if (state->error) {
       return;
@@ -389,6 +405,13 @@ static void generate_expression(generator_state_t *state, ast_node_t *node) {
     break;
   case AST_CALL:
     generate_function_call(state, node);
+    break;
+  case AST_MEMBER:
+    if (node->member.has_parens) {
+      generate_member_call(state, node);
+    } else {
+      generate_member_access(state, node);
+    }
     break;
   case AST_IF:
     generate_if_expression(state, node);
@@ -529,6 +552,7 @@ static bool is_function_result_expression(const ast_node_t *node) {
   case AST_BINARY:
   case AST_UNARY:
   case AST_CALL:
+  case AST_MEMBER:
     return true;
   case AST_IF:
     return node->if_stmt.else_branch != NULL;
@@ -543,15 +567,19 @@ static bool is_if_branch_result_expression(const ast_node_t *node) {
 
 static void generate_if_branch_value(generator_state_t *state,
                                      ast_node_t *branch) {
-  if (state == NULL || branch == NULL || branch->kind != AST_BLOCK ||
-      branch->block.stmts.count == 0) {
+  if (state == NULL || branch == NULL || branch->kind != AST_BLOCK) {
     if (state != NULL) {
-      generate_error(state, "If-expression branch has no result");
+      generate_error(state, "Invalid if-expression branch");
     }
     return;
   }
 
   ast_list_t *stmts = &branch->block.stmts;
+  if (stmts->count == 0) {
+    generate_output(state, "PUSHS nil@nil\n");
+    return;
+  }
+
   for (int i = 0; i < stmts->count - 1; i++) {
     if (stmts->items[i] == NULL) {
       generate_error(state, "Null statement in if-expression branch");
@@ -569,8 +597,15 @@ static void generate_if_branch_value(generator_state_t *state,
     return;
   }
   if (!is_if_branch_result_expression(result)) {
-    generate_error(state,
-                   "If-expression branch does not end with an expression");
+    if (result == NULL) {
+      generate_error(state, "Null result in if-expression branch");
+      return;
+    }
+    generate_statement(state, result);
+    if (state->error) {
+      return;
+    }
+    generate_output(state, "PUSHS nil@nil\n");
     return;
   }
   generate_expression(state, result);
@@ -1127,6 +1162,11 @@ static void generate_function_call(generator_state_t *state, ast_node_t *node) {
     return;
   }
 
+  if (node->call.symbol->kind == SYM_CLASS) {
+    generate_data_class_constructor(state, node);
+    return;
+  }
+
   if (node->call.symbol->unique_name == NULL ||
       node->call.symbol->decl == NULL ||
       node->call.symbol->decl->kind != AST_FUNC_DEF) {
@@ -1298,7 +1338,7 @@ static void generate_if(generator_state_t *state, ast_node_t *node) {
 
   // Generate the conditional jump to the else label if the condition is false
   generate_output(state, "PUSHS bool@false\n");
-  generate_output(state, "JUMPIFNEQS %s\n", else_label);
+  generate_output(state, "JUMPIFEQS %s\n", else_label);
 
   generate_block(state, node->if_stmt.then_branch);
   if (state->error) {
@@ -1548,6 +1588,87 @@ static void generate_list_operation(generator_state_t *state,
  * ----------------------------------------------------------------
  */
 
+static int data_class_attribute_index(const ast_node_t *class_decl,
+                                      const char *name) {
+  if (class_decl == NULL || class_decl->kind != AST_CASE_CLASS ||
+      name == NULL) {
+    return -1;
+  }
+  const ast_list_t *attributes = &class_decl->case_class.attrs;
+  for (int i = 0; i < attributes->count; i++) {
+    const ast_node_t *attr = attributes->items[i];
+    if (attr != NULL && attr->kind == AST_PARAM && attr->param.name != NULL &&
+        strcmp(attr->param.name, name) == 0) {
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+static ast_node_t *data_class_from_type(const type_t *type) {
+  if (type == NULL || type->kind != T_NAMED || type->name == NULL ||
+      generator_program_root == NULL ||
+      generator_program_root->kind != AST_PROGRAM) {
+    return NULL;
+  }
+
+  ast_list_t *defs = &generator_program_root->program.defs;
+  for (int i = 0; i < defs->count; i++) {
+    ast_node_t *def = defs->items[i];
+    if (def != NULL && def->kind == AST_CASE_CLASS &&
+        def->case_class.name != NULL &&
+        strcmp(def->case_class.name, type->name) == 0) {
+      return def;
+    }
+  }
+  return NULL;
+}
+
+static ast_node_t *data_class_from_expression(const ast_node_t *expr) {
+  if (expr == NULL) {
+    return NULL;
+  }
+
+  if (expr->kind == AST_CALL && expr->call.symbol != NULL) {
+    symbol_t *symbol = expr->call.symbol;
+    if (symbol->kind == SYM_CLASS && symbol->decl != NULL &&
+        symbol->decl->kind == AST_CASE_CLASS) {
+      return symbol->decl;
+    }
+    if (symbol->kind == SYM_FUNC && symbol->decl != NULL &&
+        symbol->decl->kind == AST_FUNC_DEF) {
+      return data_class_from_type(symbol->decl->func_def.ret_type);
+    }
+    return NULL;
+  }
+
+  if (expr->kind == AST_ID && expr->id.symbol != NULL) {
+    symbol_t *symbol = expr->id.symbol;
+    ast_node_t *class_decl = data_class_from_type(symbol->type);
+    if (class_decl != NULL) {
+      return class_decl;
+    }
+    if (symbol->decl != NULL && symbol->decl->kind == AST_VAR_DEF) {
+      return data_class_from_expression(symbol->decl->var_def.init);
+    }
+    return NULL;
+  }
+
+  if (expr->kind == AST_MEMBER) {
+    ast_node_t *parent_class = data_class_from_expression(expr->member.object);
+    int attr_index =
+        data_class_attribute_index(parent_class, expr->member.name);
+    if (attr_index < 1) {
+      return NULL;
+    }
+    ast_node_t *attribute =
+        parent_class->case_class.attrs.items[attr_index - 1];
+    return data_class_from_type(attribute->param.decl_type);
+  }
+
+  return NULL;
+}
+
 /**
  * @brief Generates a data class definition from the AST.
  * @param state The generator state.
@@ -1567,9 +1688,56 @@ static void generate_data_class_definition(generator_state_t *state,
  */
 static void generate_data_class_constructor(generator_state_t *state,
                                             ast_node_t *node) {
-  (void)node;
-  generate_error(state,
-                 "Data class constructor code generation is not implemented");
+  if (state == NULL || node == NULL || node->kind != AST_CALL ||
+      node->call.symbol == NULL || node->call.symbol->kind != SYM_CLASS ||
+      node->call.symbol->name == NULL || node->call.symbol->decl == NULL ||
+      node->call.symbol->decl->kind != AST_CASE_CLASS ||
+      node->call.arg_list_count != 1 || node->call.arg_lists == NULL) {
+    if (state != NULL) {
+      generate_error(state, "Invalid data class constructor call");
+    }
+    return;
+  }
+
+  symbol_t *call_sym = node->call.symbol;
+  int attr_count = call_sym->decl->case_class.attrs.count;
+  ast_list_t *args = &node->call.arg_lists[0];
+  if (args->count != attr_count) {
+    generate_error(state, "Data class constructor argument count mismatch");
+    return;
+  }
+
+  for (int i = 0; i < attr_count; i++) {
+    if (args->items[i] == NULL) {
+      generate_error(state, "Null data class constructor argument");
+      return;
+    }
+    generate_expression(state, args->items[i]);
+    if (state->error) {
+      return;
+    }
+  }
+
+  char array[64];
+  char value[64];
+  generate_temp_name(state, array, sizeof(array));
+  generate_temp_name(state, value, sizeof(value));
+  if (state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", array);
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "NEWARRAY LF@%s int@%d\n", array, attr_count + 1);
+  generate_output(state, "ARRAYSET LF@%s int@0 string@%s\n", array,
+                  call_sym->name);
+
+  for (int i = attr_count; i >= 1; i--) {
+    generate_output(state, "POPS LF@%s\n", value);
+    generate_output(state, "ARRAYSET LF@%s int@%d LF@%s\n", array, i, value);
+  }
+
+  generate_output(state, "PUSHS LF@%s\n", array);
 }
 
 /**
@@ -1578,8 +1746,41 @@ static void generate_data_class_constructor(generator_state_t *state,
  * @param node The AST node representing the data class member access.
  */
 static void generate_member_access(generator_state_t *state, ast_node_t *node) {
-  (void)node;
-  generate_error(state, "Data class member access is not implemented");
+  if (state == NULL || node == NULL || node->kind != AST_MEMBER ||
+      node->member.object == NULL || node->member.has_parens ||
+      node->member.name == NULL) {
+    if (state != NULL) {
+      generate_error(state, "Invalid member access");
+    }
+    return;
+  }
+
+  ast_node_t *class_decl = data_class_from_expression(node->member.object);
+  int index = data_class_attribute_index(class_decl, node->member.name);
+  if (index < 0) {
+    generate_error(state, "Unknown data class attribute '%s'",
+                   node->member.name);
+    return;
+  }
+
+  generate_expression(state, node->member.object);
+  if (state->error) {
+    return;
+  }
+
+  char array[64];
+  char value[64];
+  generate_temp_name(state, array, sizeof(array));
+  generate_temp_name(state, value, sizeof(value));
+  if (state->error) {
+    return;
+  }
+
+  generate_output(state, "DEFVAR LF@%s\n", array);
+  generate_output(state, "DEFVAR LF@%s\n", value);
+  generate_output(state, "POPS LF@%s\n", array);
+  generate_output(state, "ARRAYGET LF@%s LF@%s int@%d\n", value, array, index);
+  generate_output(state, "PUSHS LF@%s\n", value);
 }
 
 /**
@@ -1824,11 +2025,14 @@ static void generate_builtin_read(generator_state_t *state, const char *type) {
   char temp_name[256];
   char type_name[256];
   char valid_label[64];
+  bool default_on_nil = strcmp(type, "int") == 0 ||
+                        strcmp(type, "float") == 0 ||
+                        strcmp(type, "string") == 0;
   generate_temp_name(state, temp_name, sizeof(temp_name));
   if (state->error) {
     return;
   }
-  if (strcmp(type, "int") == 0) {
+  if (default_on_nil) {
     generate_temp_name(state, type_name, sizeof(type_name));
     if (state->error) {
       return;
@@ -1840,15 +2044,21 @@ static void generate_builtin_read(generator_state_t *state, const char *type) {
   }
 
   generate_output(state, "DEFVAR LF@%s\n", temp_name);
-  if (strcmp(type, "int") == 0) {
+  if (default_on_nil) {
     generate_output(state, "DEFVAR LF@%s\n", type_name);
   }
   generate_output(state, "READ LF@%s %s\n", temp_name, type);
-  if (strcmp(type, "int") == 0) {
+  if (default_on_nil) {
     generate_output(state, "TYPE LF@%s LF@%s\n", type_name, temp_name);
     generate_output(state, "JUMPIFNEQ %s LF@%s string@nil\n", valid_label,
                     type_name);
-    generate_output(state, "MOVE LF@%s int@0\n", temp_name);
+    const char *default_value = "string@";
+    if (strcmp(type, "int") == 0) {
+      default_value = "int@0";
+    } else if (strcmp(type, "float") == 0) {
+      default_value = "float@0x0p+0";
+    }
+    generate_output(state, "MOVE LF@%s %s\n", temp_name, default_value);
     generate_label(state, valid_label);
   }
   generate_output(state, "PUSHS LF@%s\n", temp_name);
@@ -2328,15 +2538,16 @@ static void generate_chr(generator_state_t *state) {
   generate_output(state, "LABEL %s\n", label_end);
 }
 
-// TODO: implement the additional functions
 static void generate_readBoolean(generator_state_t *state) {
   generate_builtin_read(state, "bool");
 }
 
+//TODO: implement function
 static void generate_readIntMaybe(generator_state_t *state) {
   generate_error(state, "readIntMaybe code generation is not implemented");
 }
 
+//TODO: implement function
 static void generate_readDoubleMaybe(generator_state_t *state) {
   generate_error(state, "readDoubleMaybe code generation is not implemented");
 }
@@ -2366,7 +2577,9 @@ int generate_code(ast_node_t *root) {
   state.output_buffer_length = 0;
   state.output_buffer_capacity = 0;
 
+  generator_program_root = root;
   generate_program(&state, root);
+  generator_program_root = NULL;
 
   return state.error ? ERR_INTERNAL : ERR_OK;
 }
