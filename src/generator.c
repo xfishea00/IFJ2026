@@ -1160,13 +1160,19 @@ static void generate_binary_expression(generator_state_t *state,
                            "NOTS\n");
     break;
   case OP_CONCAT:
-    generate_output(state, "DEFVAR LF@temp0\n"
-                           "DEFVAR LF@temp1\n"
-                           "DEFVAR LF@temp2\n"
-                           "POPS LF@temp0\n"
-                           "POPS LF@temp1\n"
-                           "CONCAT LF@temp2 LF@temp1 LF@temp0\n"
-                           "PUSHS LF@temp2\n");
+    char temp0[64];
+    char temp1[64];
+    char temp2[64];
+    generate_temp_name(state, temp0, sizeof(temp0));
+    generate_temp_name(state, temp1, sizeof(temp1));
+    generate_temp_name(state, temp2, sizeof(temp2));
+    generate_output(state, "DEFVAR LF@%s\n", temp0);
+    generate_output(state, "DEFVAR LF@%s\n", temp1);
+    generate_output(state, "DEFVAR LF@%s\n", temp2);
+    generate_output(state, "POPS LF@%s\n", temp0);
+    generate_output(state, "POPS LF@%s\n", temp1);
+    generate_output(state, "CONCAT LF@%s LF@%s LF@%s\n", temp2, temp1, temp0);
+    generate_output(state, "PUSHS LF@%s\n", temp2);
     break;
   default:
     state->error = true;
@@ -2642,7 +2648,7 @@ static void generate_readBoolean(generator_state_t *state) {
  * @param state The generator state.
  */
 static void generate_readIntMaybe(generator_state_t *state) {
-  generate_error(state, "readIntMaybe code generation is not implemented");
+  generate_builtin_read(state, "int");
 }
 
 /**
