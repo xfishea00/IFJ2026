@@ -9,6 +9,7 @@
 #define EXPRESSION_PARSER_H
 
 #include "token.h"
+#include "ast.h"
 
 typedef enum {
   PRE_ID, // id
@@ -26,6 +27,7 @@ typedef enum {
   PRE_EQ,  // ==
   PRE_NEQ, // !=
 
+  PRE_UMINUS, // u-
   PRE_NOT, // !
 
   PRE_AND, // &&
@@ -55,28 +57,26 @@ typedef enum {
 typedef struct {
   stack_element_type_t type;
   precedence_terminal_t terminal;
+  ast_node_t *node;
+  int line;
 } stack_element_t;
 
-typedef struct {
-  int n;
-  stack_element_t left_side;
-  const char *right_side;
-  precedence_terminal_t operator;
-} rule_t;
-
 typedef int (*advance_token_f)(token_t *);
+typedef ast_node_t *(*parse_primary_f)(void);
 
 #define L PRE_LOWER
 #define H PRE_HIGHER
 #define E PRE_EQUAL
 #define X PRE_ERROR
 
-#define TERMINATOR_NUM 19 // number of rows and columns in the table
-#define RULE_NUM 17       // number of rules
+#define TERMINATOR_NUM 20 // number of rows and columns in the table
 
 precedence_terminal_t
 map_token_to_precedence(token_t); // maps tokens to precedence terminals
 int parse_non_id_expression(token_t *current_token,
-                            advance_token_f advance_token); // parses expression
+                            advance_token_f advance_token,
+                            parse_primary_f parse_primary,
+                            ast_node_t *initial_expression,
+                            ast_node_t **expression); // parses expression
 
 #endif

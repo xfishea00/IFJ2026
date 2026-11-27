@@ -9,7 +9,6 @@
 #include "error.h"
 #include "expression_parser.h"
 #include "scanner.h"
-#include "symtable.h"
 #include "token.h"
 #include "type.h"
 #include <stdbool.h>
@@ -184,8 +183,9 @@ void parse_arg_groups(ast_list_t **lists, int *list_count);
 static ast_node_t *parse_arg_list(void);
 
 static ast_node_t *parse_expression(void);
-static ast_node_t *parse_expression_operators(ast_node_t *left,
-                                              int min_precedence);
+static ast_node_t *parse_expression_from(ast_node_t *initial_expression);
+static ast_node_t *parse_expression_primary(void);
+static ast_node_t *parse_identifier_primary(char *name, int line);
 static ast_node_t *parse_expr_match_tail(ast_node_t *subject);
 static ast_node_t *parse_literals(void);
 static ast_node_t *parse_list_def(void);
@@ -414,8 +414,8 @@ static ast_node_t *parse_statement(void) {
 }
 
 static ast_node_t *parse_id_stmt_tail(void) {
-  char *name = take_string();
   int line = current_line;
+  char *name = take_string();
   if (check(TOK_ASSIGN)) {
     // Assignment: id = expression
     match(TOK_ASSIGN);
@@ -427,102 +427,9 @@ static ast_node_t *parse_id_stmt_tail(void) {
       internal_error();
     }
     return assign;
-  } else if (check(TOK_LPAR)) {
-    // Function call: id(args)...
-    int list_count = 0;
-    ast_list_t *list = NULL;
-    parse_arg_groups(&list, &list_count);
-    ast_node_t *call = ast_new_call(name, list, list_count, line);
-
-    if (call == NULL) {
-      free(name);
-      for (int i = 0; i < list_count; i++) {
-        for (int j = 0; j < list[i].count; j++) {
-          ast_free(list[i].items[j]);
-        }
-        free(list[i].items);
-      }
-      free(list);
-      internal_error();
-    }
-    if (check(TOK_KW_MATCH)) {
-      return parse_expr_match_tail(call);
-    }
-    ast_node_t *expression = parse_expression_operators(call, 1);
-    return expression;
-
-  } else if (check(TOK_KW_MATCH)) {
-    ast_node_t *subject = ast_new_id(name, line);
-    if (subject == NULL) {
-      free(name);
-      internal_error();
-    }
-    return parse_expr_match_tail(subject);
-  } else {
-    ast_node_t *left = ast_new_id(name, line);
-    if (left == NULL) {
-      internal_error();
-    }
-    ast_op_t op;
-    bool has_operator = true;
-    switch (peek()) {
-    case TOK_PLUS:
-      op = OP_ADD;
-      break;
-    case TOK_MINUS:
-      op = OP_SUB;
-      break;
-    case TOK_CONCAT:
-      op = OP_CONCAT;
-      break;
-    case TOK_MUL:
-      op = OP_MUL;
-      break;
-    case TOK_DIV:
-      op = OP_DIV;
-      break;
-    case TOK_LT:
-      op = OP_LT;
-      break;
-    case TOK_GT:
-      op = OP_GT;
-      break;
-    case TOK_LE:
-      op = OP_LE;
-      break;
-    case TOK_GE:
-      op = OP_GE;
-      break;
-    case TOK_EQ:
-      op = OP_EQ;
-      break;
-    case TOK_NEQ:
-      op = OP_NEQ;
-      break;
-    case TOK_AND:
-      op = OP_AND;
-      break;
-    case TOK_OR:
-      op = OP_OR;
-      break;
-    default:
-      has_operator = false;
-      break;
-    }
-    if (!has_operator) {
-      return left;
-    }
-    advance();
-    ast_node_t *right = parse_expression();
-    ast_node_t *binary = ast_new_binary(op, left, right, line);
-    if (binary == NULL) {
-      ast_free(left);
-      ast_free(right);
-      internal_error();
-    }
-    return binary;
   }
-  return NULL; // temporary
+
+  return parse_expression_from(parse_identifier_primary(name, line));
 }
 
 static ast_node_t *parse_var_definition(void) {
@@ -762,20 +669,64 @@ static ast_node_t *parse_arg_list(void) {
   return arg;
 }
 
-static ast_node_t *parse_expression_primary(void) {
-  int line = current_line;
-
-  if (check(TOK_MINUS) || check(TOK_NOT)) {
-    ast_op_t op = check(TOK_MINUS) ? OP_NEG : OP_NOT;
-    advance();
-    ast_node_t *operand = parse_expression_primary();
-    ast_node_t *unary = ast_new_unary(op, operand, line);
-    if (unary == NULL) {
-      ast_free(operand);
+static ast_node_t *parse_identifier_primary(char *name, int line) {
+  ast_node_t *expression;
+  if (check(TOK_LPAR)) {
+    int list_count = 0;
+    ast_list_t *list = NULL;
+    parse_arg_groups(&list, &list_count);
+    expression = ast_new_call(name, list, list_count, line);
+    if (expression == NULL) {
+      free(name);
+      for (int i = 0; i < list_count; i++) {
+        for (int j = 0; j < list[i].count; j++) {
+          ast_free(list[i].items[j]);
+        }
+        free(list[i].items);
+      }
+      free(list);
       internal_error();
     }
-    return unary;
+  } else {
+    expression = ast_new_id(name, line);
+    if (expression == NULL) {
+      free(name);
+      internal_error();
+    }
   }
+
+  while (check(TOK_DOT)) {
+    advance();
+    if (!check(TOK_ID)) {
+      ast_free(expression);
+      syntax_error("Expected member name");
+    }
+    char *member_name = take_string();
+    ast_list_t args = {0};
+    bool has_parens = check(TOK_LPAR);
+    if (has_parens) {
+      int list_count = 0;
+      ast_list_t *list = NULL;
+      parse_arg_groups(&list, &list_count);
+      if (list_count > 0) {
+        args = list[0];
+        free(list);
+      }
+    }
+    ast_node_t *member =
+        ast_new_member(member_name, expression, has_parens, args, line);
+    if (member == NULL) {
+      ast_free(expression);
+      free(member_name);
+      internal_error();
+    }
+    expression = member;
+  }
+  return expression;
+}
+
+static ast_node_t *parse_expression_primary(void) {
+  int line = current_line;
 
   if (check(TOK_KW_LIST)) {
     match(TOK_KW_LIST);
@@ -881,66 +832,8 @@ static ast_node_t *parse_expression_primary(void) {
         free(lambda_name);
         return body;
       }
-      ast_node_t *inner = ast_new_id(lambda_name, line);
-      ast_op_t op;
-      bool found = false;
-      switch (peek()) {
-      case TOK_PLUS:
-        op = OP_ADD;
-        found = true;
-        break;
-      case TOK_MINUS:
-        op = OP_SUB;
-        found = true;
-        break;
-      case TOK_MUL:
-        op = OP_MUL;
-        found = true;
-        break;
-      case TOK_DIV:
-        op = OP_DIV;
-        found = true;
-        break;
-      case TOK_LT:
-        op = OP_LT;
-        found = true;
-        break;
-      case TOK_GT:
-        op = OP_GT;
-        found = true;
-        break;
-      case TOK_LE:
-        op = OP_LE;
-        found = true;
-        break;
-      case TOK_GE:
-        op = OP_GE;
-        found = true;
-        break;
-      case TOK_EQ:
-        op = OP_EQ;
-        found = true;
-        break;
-      case TOK_NEQ:
-        op = OP_NEQ;
-        found = true;
-        break;
-      case TOK_AND:
-        op = OP_AND;
-        found = true;
-        break;
-      case TOK_OR:
-        op = OP_OR;
-        found = true;
-        break;
-      default:
-        break;
-      }
-      if (found) {
-        advance();
-        ast_node_t *right = parse_expression_primary();
-        inner = ast_new_binary(op, inner, right, line);
-      }
+      ast_node_t *inner = parse_identifier_primary(lambda_name, line);
+      inner = parse_expression_from(inner);
       match(TOK_RPAR);
       return inner;
     }
@@ -995,42 +888,7 @@ static ast_node_t *parse_expression_primary(void) {
     return inner;
   }
   if (check(TOK_ID)) {
-    char *name = take_string();
-    if (check(TOK_LPAR)) {
-      int list_count = 0;
-      ast_list_t *list = NULL;
-      parse_arg_groups(&list, &list_count);
-      return ast_new_call(name, list, list_count, line);
-    }
-    ast_node_t *id = ast_new_id(name, line);
-    while (check(TOK_DOT)) {
-      advance();
-      if (!check(TOK_ID)) {
-        ast_free(id);
-        syntax_error("Expected member name");
-      }
-      char *member_name = take_string();
-      ast_list_t args = {0};
-      bool has_parens = check(TOK_LPAR);
-      if (has_parens) {
-        int list_count = 0;
-        ast_list_t *list = NULL;
-        parse_arg_groups(&list, &list_count);
-        if (list_count > 0) {
-          args = list[0];
-          free(list);
-        }
-      }
-      ast_node_t *member =
-          ast_new_member(member_name, id, has_parens, args, line);
-      if (member == NULL) {
-        ast_free(id);
-        free(member_name);
-        internal_error();
-      }
-      id = member;
-    }
-    return id;
+    return parse_identifier_primary(take_string(), line);
   }
   if (check(TOK_INT_LIT)) {
     int64_t value = parser.current_token.int_val;
@@ -1054,86 +912,23 @@ static ast_node_t *parse_expression_primary(void) {
   return NULL;
 }
 
-static ast_node_t *parse_expression_operators(ast_node_t *left,
-                                              int min_precedence) {
-  while (true) {
-    ast_op_t op;
-    int precedence;
-    switch (peek()) {
-    case TOK_MUL:
-      op = OP_MUL;
-      precedence = 5;
-      break;
-    case TOK_DIV:
-      op = OP_DIV;
-      precedence = 5;
-      break;
-    case TOK_CONCAT:
-      op = OP_CONCAT;
-      precedence = 4;
-      break;
-    case TOK_PLUS:
-      op = OP_ADD;
-      precedence = 4;
-      break;
-    case TOK_MINUS:
-      op = OP_SUB;
-      precedence = 4;
-      break;
-    case TOK_LT:
-      op = OP_LT;
-      precedence = 3;
-      break;
-    case TOK_GT:
-      op = OP_GT;
-      precedence = 3;
-      break;
-    case TOK_LE:
-      op = OP_LE;
-      precedence = 3;
-      break;
-    case TOK_GE:
-      op = OP_GE;
-      precedence = 3;
-      break;
-    case TOK_EQ:
-      op = OP_EQ;
-      precedence = 3;
-      break;
-    case TOK_NEQ:
-      op = OP_NEQ;
-      precedence = 3;
-      break;
-    case TOK_AND:
-      op = OP_AND;
-      precedence = 2;
-      break;
-    case TOK_OR:
-      op = OP_OR;
-      precedence = 1;
-      break;
-    default:
-      return left;
-    }
-    if (precedence < min_precedence) {
-      return left;
-    }
-    advance();
-    ast_node_t *right = parse_expression_primary();
-    right = parse_expression_operators(right, precedence + 1);
-    ast_node_t *binary = ast_new_binary(op, left, right, current_line);
-    if (binary == NULL) {
-      ast_free(left);
-      ast_free(right);
-      internal_error();
-    }
-    left = binary;
+static ast_node_t *parse_expression_from(ast_node_t *initial_expression) {
+  ast_node_t *expression = NULL;
+  int rc = parse_non_id_expression(&parser.current_token, advance_expression_token,
+                                parse_expression_primary, initial_expression, &expression);
+  if (rc == ERR_SYNTAX) {
+    syntax_error("Invalid expression");
   }
+  if (rc != ERR_OK) {
+    exit(rc);
+  }
+  if (check(TOK_KW_MATCH)) {
+    return parse_expr_match_tail(expression);
+  }
+  return expression;
 }
 
 static ast_node_t *parse_expression(void) {
-  int line = current_line;
-
   if (check(TOK_KW_MATCH)) {
     syntax_error("Match expression requires a subject");
   }
@@ -1141,29 +936,7 @@ static ast_node_t *parse_expression(void) {
     return parse_if_statement();
   }
 
-  if (check(TOK_KW_LIST) || check(TOK_ID) || check_literal() ||
-      check(TOK_LPAR) || check(TOK_MINUS) || check(TOK_NOT)) {
-    ast_node_t *left = parse_expression_primary();
-    if (left == NULL) {
-      internal_error();
-    }
-    ast_node_t *expression = parse_expression_operators(left, 1);
-    if (check(TOK_KW_MATCH)) {
-      return parse_expr_match_tail(expression);
-    }
-    return expression;
-  }
-
-  int rc =
-      parse_non_id_expression(&parser.current_token, advance_expression_token);
-  if (rc == ERR_SYNTAX) {
-    syntax_error("Invalid expression");
-  }
-  if (rc != ERR_OK) {
-    exit(rc);
-  }
-
-  return ast_new_unit(line);
+  return parse_expression_from(NULL);
 }
 
 static ast_node_t *parse_expr_match_tail(ast_node_t *subject) {
