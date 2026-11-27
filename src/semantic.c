@@ -1,7 +1,7 @@
 /*
  * Project: Implementace překladače imperativního jazyka IFJ26
  * File:    semantic.c
- * Authors: Michal Řezníček (xreznim00)
+ * Authors: Michal Řezníček (xreznim00), Adam James Fisher (xfishea00)
  * Brief:   semantic analysis
  */
 
@@ -31,6 +31,8 @@ static type_kind_t list_item_type_kind(const ast_node_t *item) {
   return item->type->kind;
 }
 
+//Partly AI-generated 
+//Prompt: My checks for list element homogenity and expected type compliance in semantic.c are a bit unreadable. Can you you rewrite them better?
 static int check_list_literal_homogeneity(ast_node_t *list) {
   type_kind_t expected_kind = T_UNKNOWN;
 

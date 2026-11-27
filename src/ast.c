@@ -781,4 +781,7 @@ static void print_node(const ast_node_t *node, int depth, const char *label) {
   }
 }
 
+//AI-Generated Code
+//Applies to all functions related to printing the AST tree for debugging purposes
+//Prompt: can you make a function that displays the structure of the finished ast in the terminal
 void ast_print(const ast_node_t *node) { print_node(node, 0, NULL); }
