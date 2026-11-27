@@ -1124,6 +1124,10 @@ static void generate_binary_expression(generator_state_t *state,
   if (state->error) {
     return;
   }
+  
+  char temp0[64];
+  char temp1[64];
+  char temp2[64];
 
   switch (node->binary.op) {
   case OP_ADD:
@@ -1160,9 +1164,6 @@ static void generate_binary_expression(generator_state_t *state,
                            "NOTS\n");
     break;
   case OP_CONCAT:
-    char temp0[64];
-    char temp1[64];
-    char temp2[64];
     generate_temp_name(state, temp0, sizeof(temp0));
     generate_temp_name(state, temp1, sizeof(temp1));
     generate_temp_name(state, temp2, sizeof(temp2));
